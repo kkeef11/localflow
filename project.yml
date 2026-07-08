@@ -42,5 +42,8 @@ targets:
     type: bundle.unit-test
     platform: macOS
     sources: [Tests/LocalFlowTests]
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
     dependencies:
       - target: LocalFlow
