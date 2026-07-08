@@ -1,0 +1,46 @@
+name: LocalFlow
+options:
+  bundleIdPrefix: com.kkeefer
+  deploymentTarget:
+    macOS: "14.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    PRODUCT_BUNDLE_IDENTIFIER: com.kkeefer.LocalFlow
+    CODE_SIGN_STYLE: Automatic
+packages:
+  WhisperKit:
+    url: https://github.com/argmaxinc/WhisperKit
+    from: "0.9.0"
+targets:
+  LocalFlow:
+    type: application
+    platform: macOS
+    sources: [Sources/LocalFlow]
+    info:
+      path: Sources/LocalFlow/Info.plist
+      properties:
+        CFBundleName: LocalFlow
+        LSUIElement: true
+        NSMicrophoneUsageDescription: "LocalFlow records your voice to transcribe it into text on-device."
+        NSAppleEventsUsageDescription: "LocalFlow runs app actions you request by voice."
+    entitlements:
+      path: Sources/LocalFlow/LocalFlow.entitlements
+      properties:
+        com.apple.security.app-sandbox: false
+        com.apple.security.device.audio-input: true
+    settings:
+      base:
+        INFOPLIST_KEY_LSUIElement: true
+        ENABLE_HARDENED_RUNTIME: true
+    dependencies:
+      - package: WhisperKit
+  LocalFlowTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources: [Tests/LocalFlowTests]
+    dependencies:
+      - target: LocalFlow
