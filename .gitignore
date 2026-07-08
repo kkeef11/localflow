@@ -4,3 +4,6 @@ DerivedData/
 *.xcuserstate
 xcuserdata/
 .swiftpm/
+.superpowers/
+*.xcodeproj
+.build/
