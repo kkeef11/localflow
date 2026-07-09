@@ -20,8 +20,15 @@ final class HotkeyManager {
 
     func start() {
         let mask: CGEventMask = 1 << CGEventType.flagsChanged.rawValue
-        let callback: CGEventTapCallBack = { _, _, event, userInfo in
+        let callback: CGEventTapCallBack = { _, type, event, userInfo in
             let mgr = Unmanaged<HotkeyManager>.fromOpaque(userInfo!).takeUnretainedValue()
+            // macOS disables a tap whose runloop stalls (e.g. under heavy first-transcription
+            // load) by delivering .tapDisabledByTimeout. Without re-enabling here, the
+            // hotkeys die permanently — the "worked once, then never again" failure mode.
+            if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+                if let tap = mgr.tap { CGEvent.tapEnable(tap: tap, enable: true) }
+                return nil
+            }
             let keycode = event.getIntegerValueField(.keyboardEventKeycode)
             if keycode == 61 { mgr.onDictation(event.flags.contains(.maskAlternate)) }
             if keycode == 60 { mgr.onCommand(event.flags.contains(.maskShift)) }

@@ -1,4 +1,5 @@
 @preconcurrency import AVFoundation
+import os
 
 enum AudioRecorderError: Error {
     case converterUnavailable
@@ -24,6 +25,9 @@ private final class FeedFlag: @unchecked Sendable {
 /// included, is handed to the transcriber as-is. See README "Known limitations" for the
 /// user-facing consequence (silence can hallucinate a short transcribed phrase).
 final class AudioRecorder: AudioRecording, @unchecked Sendable {
+    /// Debug-only visibility into the level pipeline: `log stream --process LocalFlow
+    /// --level debug` shows per-buffer RMS while recording.
+    private static let log = Logger(subsystem: "com.kkeefer.LocalFlow", category: "audio")
     private let engine = AVAudioEngine()
     private var buffers: [Float] = []
     private let buffersLock = NSLock()
@@ -74,6 +78,7 @@ final class AudioRecorder: AudioRecording, @unchecked Sendable {
                 var sumSquares: Float = 0
                 for s in samples { sumSquares += s * s }
                 let rms = (sumSquares / Float(samples.count)).squareRoot()
+                Self.log.debug("mic rms \(rms, format: .fixed(precision: 4))")
                 onLevel(rms)
             }
         }

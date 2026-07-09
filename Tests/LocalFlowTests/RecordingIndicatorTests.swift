@@ -3,16 +3,26 @@ import SwiftUI
 @testable import LocalFlow
 
 final class RecordingIndicatorTests: XCTestCase {
-    func test_mode_colors_are_distinct_and_correct() {
-        // #9D00FF and #37de43 as resolved RGB.
-        let purple = NSColor(IndicatorMode.dictation.barColor).usingColorSpace(.sRGB)!
-        XCTAssertEqual(Double(purple.redComponent),   157.0/255.0, accuracy: 0.01)
-        XCTAssertEqual(Double(purple.greenComponent),   0.0,        accuracy: 0.01)
-        XCTAssertEqual(Double(purple.blueComponent),   255.0/255.0, accuracy: 0.01)
-
-        let green = NSColor(IndicatorMode.command.barColor).usingColorSpace(.sRGB)!
-        XCTAssertEqual(Double(green.redComponent),    55.0/255.0,  accuracy: 0.01)
-        XCTAssertEqual(Double(green.greenComponent), 222.0/255.0,  accuracy: 0.01)
-        XCTAssertEqual(Double(green.blueComponent),   67.0/255.0,  accuracy: 0.01)
+    /// Reference design: dictation = light pill (white bg, black border/bars/dots),
+    /// command = dark pill (black bg, white border/bars/dots).
+    func test_dictation_is_light_variant() {
+        let bg = NSColor(IndicatorMode.dictation.background).usingColorSpace(.sRGB)!
+        let fg = NSColor(IndicatorMode.dictation.foreground).usingColorSpace(.sRGB)!
+        XCTAssertEqual(Double(bg.redComponent), 1.0, accuracy: 0.01)
+        XCTAssertEqual(Double(bg.greenComponent), 1.0, accuracy: 0.01)
+        XCTAssertEqual(Double(bg.blueComponent), 1.0, accuracy: 0.01)
+        XCTAssertEqual(Double(fg.redComponent), 0.0, accuracy: 0.01)
+        XCTAssertEqual(Double(fg.greenComponent), 0.0, accuracy: 0.01)
+        XCTAssertEqual(Double(fg.blueComponent), 0.0, accuracy: 0.01)
+    }
+    func test_command_is_dark_variant() {
+        let bg = NSColor(IndicatorMode.command.background).usingColorSpace(.sRGB)!
+        let fg = NSColor(IndicatorMode.command.foreground).usingColorSpace(.sRGB)!
+        XCTAssertEqual(Double(bg.redComponent), 0.0, accuracy: 0.01)
+        XCTAssertEqual(Double(bg.greenComponent), 0.0, accuracy: 0.01)
+        XCTAssertEqual(Double(bg.blueComponent), 0.0, accuracy: 0.01)
+        XCTAssertEqual(Double(fg.redComponent), 1.0, accuracy: 0.01)
+        XCTAssertEqual(Double(fg.greenComponent), 1.0, accuracy: 0.01)
+        XCTAssertEqual(Double(fg.blueComponent), 1.0, accuracy: 0.01)
     }
 }

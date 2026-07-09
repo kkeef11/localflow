@@ -1,16 +1,25 @@
 import SwiftUI
 import AppKit
 
-/// Which pipeline the pill is showing — drives its color.
+/// Which pipeline the pill is showing — drives its variant per the reference design:
+/// dictation = light pill (white background, black border/bars/dots),
+/// command = dark pill (black background, white border/bars/dots).
 enum IndicatorMode {
     case dictation
     case command
 
-    /// Bar/dot tint. Dictation #9D00FF (purple), command #37de43 (green).
-    var barColor: Color {
+    var background: Color {
         switch self {
-        case .dictation: return Color(red: 157/255, green: 0/255, blue: 255/255)
-        case .command:   return Color(red: 55/255, green: 222/255, blue: 67/255)
+        case .dictation: return .white
+        case .command:   return .black
+        }
+    }
+
+    /// Border, bars, and dots all share this color.
+    var foreground: Color {
+        switch self {
+        case .dictation: return .black
+        case .command:   return .white
         }
     }
 }
@@ -79,7 +88,7 @@ final class RecordingIndicatorController: RecordingIndicating {
 
     private func makePanel() -> NSPanel {
         let panel = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 260, height: 60),
+            contentRect: NSRect(origin: .zero, size: IndicatorView.pillSize),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered, defer: false)
         panel.isFloatingPanel = true
