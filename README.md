@@ -59,6 +59,7 @@ the machine.
   transcribing / error), shown as a colored dot plus text.
 
 ## Troubleshooting
+- **Build fails with "Entitlements file was modified during the build"**: stale incremental-build state after running `xcodegen generate`. Fix: `xcodebuild -project LocalFlow.xcodeproj -scheme LocalFlow clean`, then rebuild.
 
 - **Accessibility/Input Monitoring permission disappears after every rebuild.** Cause:
   the app is ad-hoc signed (no `DEVELOPMENT_TEAM` configured), so macOS sees each rebuild as
