@@ -10,15 +10,31 @@ struct LocalFlowApp: App {
     private let transcriber: Transcribing
 
     init() {
-        transcriber = WhisperKitTranscriber(model: settings.settings.sttModel)
+        transcriber = WhisperKitTranscriber(model: settings.settings.sttModel,
+                                            promptTerms: settings.settings.dictionary)
     }
 
     var body: some Scene {
         MenuBarExtra("LocalFlow", systemImage: "mic.fill") {
-            MenuBarView(state: state)
-                .onAppear { wire() }
+            MenuBarView(state: state, onDictionarySave: saveDictionary)
+                .onAppear {
+                    wire()
+                    state.dictionaryText = settings.settings.dictionary.joined(separator: ", ")
+                }
         }
         .menuBarExtraStyle(.window)
+    }
+
+    /// Parses the comma-separated dictionary field and persists it to `SettingsStore`.
+    /// Both the STT prompt bias (captured at `WhisperKitTranscriber` construction, above)
+    /// and cleanup's dictionary (captured at `wire()` time, below) read this store once at
+    /// startup — an edit here takes effect on next launch, not live. That's an acceptable
+    /// v1 tradeoff and is called out in the menu copy.
+    @MainActor private func saveDictionary(_ text: String) {
+        settings.settings.dictionary = text
+            .split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
     }
 
     /// `.onAppear` can fire more than once for a `MenuBarExtra`'s content view (e.g. each

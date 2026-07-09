@@ -5,6 +5,7 @@ import Combine
 final class AppState: ObservableObject {
     @Published var status: String = "Idle"
     @Published var history: [String] = []
+    @Published var dictionaryText: String = ""
 
     func record(_ text: String) {
         guard !text.isEmpty else { return }
