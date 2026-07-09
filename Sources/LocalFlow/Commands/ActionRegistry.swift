@@ -16,12 +16,18 @@ struct AppAction {
 struct ActionRegistry {
     /// Directories searched, in order, when resolving an app name to a launchable URL.
     /// Deliberately limited to standard installation locations; this is a lookup, not a
-    /// filesystem-wide search.
-    private static let searchDirectories = [
+    /// filesystem-wide search. Injectable for tests only — production callers use the default.
+    static let defaultSearchDirectories = [
         "/Applications",
         "/System/Applications",
         NSHomeDirectory() + "/Applications",
     ]
+
+    let searchDirectories: [String]
+
+    init(searchDirectories: [String] = ActionRegistry.defaultSearchDirectories) {
+        self.searchDirectories = searchDirectories
+    }
 
     func match(_ phrase: String) -> (action: AppAction, argument: String?)? {
         let trimmed = phrase.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -37,9 +43,9 @@ struct ActionRegistry {
                 .trimmingCharacters(in: .whitespaces.union(CharacterSet(charactersIn: ".,!?;:")))
             // Reject arguments containing path separators to prevent traversal
             guard !arg.contains("/") else { return nil }
-            return (AppAction(id: "open") { name in
+            return (AppAction(id: "open") { [self] name in
                 guard let name, !name.isEmpty else { return }
-                guard let url = Self.resolveApplicationURL(named: name) else { return }
+                guard let url = resolveApplicationURL(named: name) else { return }
                 NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration())
             }, arg)
         }
@@ -67,11 +73,12 @@ struct ActionRegistry {
     /// directory scan) and launches the result via the modern
     /// `openApplication(at:configuration:)`. This only finds top-level apps in standard
     /// locations, which is a fine trade-off for a voice command whitelist.
-    private static func resolveApplicationURL(named name: String) -> URL? {
+    func resolveApplicationURL(named name: String) -> URL? {
         guard !name.contains("/"), !name.contains("..") else { return nil }
         let candidateFileNames = name.lowercased().hasSuffix(".app") ? [name] : [name, "\(name).app"]
         let fm = FileManager.default
 
+        // 1. Exact path fast path.
         for directory in searchDirectories {
             for candidate in candidateFileNames {
                 let path = "\(directory)/\(candidate)"
@@ -81,6 +88,7 @@ struct ActionRegistry {
             }
         }
 
+        // 2. Case-insensitive exact-name scan.
         let targetNames = Set(candidateFileNames.map { $0.lowercased() })
         for directory in searchDirectories {
             guard let entries = try? fm.contentsOfDirectory(atPath: directory) else { continue }
@@ -88,7 +96,22 @@ struct ActionRegistry {
                 return URL(fileURLWithPath: "\(directory)/\(match)")
             }
         }
-        return nil
+
+        // 3. Substring fallback: "excel" → "Microsoft Excel.app". Launches only when the
+        // spoken fragment matches exactly ONE app name across all search directories —
+        // an ambiguous fragment ("microsoft") refuses rather than guessing.
+        let needle = name.lowercased()
+        var hits: [(directory: String, entry: String)] = []
+        for directory in searchDirectories {
+            guard let entries = try? fm.contentsOfDirectory(atPath: directory) else { continue }
+            for entry in entries
+            where entry.lowercased().hasSuffix(".app") && entry.lowercased().contains(needle) {
+                hits.append((directory, entry))
+            }
+        }
+        let uniqueNames = Set(hits.map { $0.entry.lowercased() })
+        guard uniqueNames.count == 1, let hit = hits.first else { return nil }
+        return URL(fileURLWithPath: "\(hit.directory)/\(hit.entry)")
     }
 
     /// Posts a keyDown/keyUp pair for `keyCode` with `flags` held (e.g. Cmd+C, Cmd+V).
