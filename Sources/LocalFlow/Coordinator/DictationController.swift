@@ -15,16 +15,20 @@ final class DictationController {
     private let injector: TextInjecting
     private let state: AppState
     private let settings: SettingsStore
+    private let contextProvider: ContextProvider
     private var recording = false
+    private var capturedTone = "neutral"
 
     init(recorder: AudioRecorder, transcriber: Transcribing, cleanup: CleanupService? = nil,
-         injector: TextInjecting, state: AppState, settings: SettingsStore) {
+         injector: TextInjecting, state: AppState, settings: SettingsStore,
+         contextProvider: ContextProvider) {
         self.recorder = recorder
         self.transcriber = transcriber
         self.cleanup = cleanup
         self.injector = injector
         self.state = state
         self.settings = settings
+        self.contextProvider = contextProvider
     }
 
     func dictationHotkey(pressed: Bool) {
@@ -33,6 +37,7 @@ final class DictationController {
 
     private func beginRecording() {
         guard !recording else { return }
+        capturedTone = contextProvider.toneLabel(forBundleID: ContextProvider.frontmostBundleID())
         recording = true
         state.status = "Listening…"
         try? recorder.start()
@@ -48,7 +53,7 @@ final class DictationController {
                 var text = try await transcriber.transcribe(samples: samples)
                 if let cleanup {
                     state.status = "Cleaning…"
-                    text = (try? await cleanup.clean(raw: text)) ?? text
+                    text = (try? await cleanup.clean(raw: text, toneLabel: capturedTone)) ?? text
                 }
                 guard !text.isEmpty else { state.status = "Idle"; return }
                 injector.inject(text)
