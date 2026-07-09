@@ -37,11 +37,11 @@ targets:
         ENABLE_HARDENED_RUNTIME: true
         # Code signing — REQUIRED for stable Accessibility/Input Monitoring grants
         # across rebuilds. Setup: Xcode → Settings → Accounts → add Apple ID →
-        # Manage Certificates → + → Apple Development. Then find your 10-char
-        # Team ID via: security find-identity -v -p codesigning
-        # and uncomment:
-        # DEVELOPMENT_TEAM: YOUR_TEAM_ID
-        # CODE_SIGN_IDENTITY: "Apple Development"
+        # Manage Certificates → + → Apple Development. Then set your Team ID
+        # (the OU field: security find-certificate -c "Apple Development" -p |
+        #  openssl x509 -noout -subject).
+        DEVELOPMENT_TEAM: GWXZQMSVDT
+        CODE_SIGN_IDENTITY: "Apple Development"
     dependencies:
       - package: WhisperKit
   LocalFlowTests:
