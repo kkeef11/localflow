@@ -9,7 +9,7 @@ import Foundation
 /// isn't running or a `CleanupService` isn't wired up.
 @MainActor
 final class DictationController {
-    private let recorder: AudioRecording
+    private var recorder: AudioRecording
     private let transcriber: Transcribing
     private let cleanup: CleanupService?
     private let injector: TextInjecting
@@ -17,6 +17,7 @@ final class DictationController {
     private let contextProvider: ContextProvider
     private let router: CommandRouter
     private let llm: LLMGenerating
+    private let indicator: RecordingIndicating
     private var recording = false
     private var capturedTone = "neutral"
     private enum Mode { case dictation, command }
@@ -24,7 +25,8 @@ final class DictationController {
 
     init(recorder: AudioRecording, transcriber: Transcribing, cleanup: CleanupService? = nil,
          injector: TextInjecting, state: AppState,
-         contextProvider: ContextProvider, router: CommandRouter, llm: LLMGenerating) {
+         contextProvider: ContextProvider, router: CommandRouter, llm: LLMGenerating,
+         indicator: RecordingIndicating = NoopIndicator()) {
         self.recorder = recorder
         self.transcriber = transcriber
         self.cleanup = cleanup
@@ -33,6 +35,7 @@ final class DictationController {
         self.contextProvider = contextProvider
         self.router = router
         self.llm = llm
+        self.indicator = indicator
     }
 
     func dictationHotkey(pressed: Bool) {
@@ -56,6 +59,9 @@ final class DictationController {
         capturedTone = contextProvider.toneLabel(forBundleID: ContextProvider.frontmostBundleID())
         recording = true
         state.status = "Listening…"
+        indicator.show(mode: mode == .command ? .command : .dictation)
+        let indicator = self.indicator
+        recorder.onLevel = { level in Task { @MainActor in indicator.updateLevel(level) } }
         try? recorder.start()
     }
 
@@ -64,7 +70,10 @@ final class DictationController {
         recording = false
         state.status = "Transcribing…"
         let samples = recorder.stop()
+        recorder.onLevel = nil
+        indicator.beginProcessing()
         Task { @MainActor in
+            defer { indicator.hide() }
             do {
                 let raw = try await transcriber.transcribe(samples: samples)
                 if mode == .command {

@@ -16,8 +16,10 @@ enum IndicatorMode {
 
 /// Lifecycle the `DictationController` drives; implemented by the real panel
 /// controller and by `NoopIndicator` (tests / when no UI is desired).
+/// `Sendable` so the existential can be captured in `@Sendable` closures (the audio
+/// thread's level callback) — trivially satisfied: `@MainActor` classes are Sendable.
 @MainActor
-protocol RecordingIndicating {
+protocol RecordingIndicating: Sendable {
     func show(mode: IndicatorMode)
     func updateLevel(_ level: Float)
     func beginProcessing()

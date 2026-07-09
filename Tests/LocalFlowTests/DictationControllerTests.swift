@@ -4,10 +4,27 @@ import XCTest
 /// Never touches real audio hardware: `start()` is a no-op and `stop()` returns a fixed,
 /// empty sample buffer. `FakeTranscriber` ignores the samples entirely, so the actual
 /// contents don't matter for these tests.
-private struct FakeRecorder: AudioRecording {
+private final class FakeRecorder: AudioRecording, @unchecked Sendable {
+    var onLevel: (@Sendable (Float) -> Void)?
     func start() throws {}
     func stop() -> [Float] { [] }
+    /// Test helper: simulate the audio thread delivering a level.
+    func emit(_ level: Float) { onLevel?(level) }
 }
+
+/// Records the lifecycle calls the controller makes so tests can assert ordering.
+@MainActor
+private final class SpyIndicator: RecordingIndicating {
+    enum Event: Equatable { case show(IndicatorMode); case level(Float); case processing; case hide }
+    private(set) var events: [Event] = []
+    func show(mode: IndicatorMode) { events.append(.show(mode)) }
+    func updateLevel(_ level: Float) { events.append(.level(level)) }
+    func beginProcessing() { events.append(.processing) }
+    func hide() { events.append(.hide) }
+}
+
+/// Trivially equatable (no associated values); declared in-test to avoid touching production code.
+extension IndicatorMode: Equatable {}
 
 private final class FakeTranscriber: Transcribing {
     let transcript: String
@@ -60,18 +77,62 @@ final class DictationControllerTests: XCTestCase {
         transcript: String,
         cleanup: CleanupService?,
         state: AppState,
-        injector: FakeInjector
+        injector: FakeInjector,
+        indicator: RecordingIndicating = NoopIndicator(),
+        recorder: FakeRecorder = FakeRecorder()
     ) -> DictationController {
         DictationController(
-            recorder: FakeRecorder(),
+            recorder: recorder,
             transcriber: FakeTranscriber(transcript: transcript),
             cleanup: cleanup,
             injector: injector,
             state: state,
             contextProvider: ContextProvider(modes: [:]),
             router: CommandRouter(registry: ActionRegistry()),
-            llm: FakeLLM()
+            llm: FakeLLM(),
+            indicator: indicator
         )
+    }
+
+    func test_dictation_shows_processing_then_hides() async throws {
+        let state = AppState(); let injector = FakeInjector(); let spy = SpyIndicator()
+        let cleanup = CleanupService(llm: FakeLLM(response: "cleaned"), dictionary: [])
+        let controller = makeController(transcript: "raw", cleanup: cleanup,
+                                        state: state, injector: injector, indicator: spy)
+        controller.dictationHotkey(pressed: true)
+        controller.dictationHotkey(pressed: false)
+        try await waitForCompletion(state)
+        XCTAssertEqual(spy.events.first, .show(.dictation))
+        XCTAssertTrue(spy.events.contains(.processing))
+        XCTAssertEqual(spy.events.last, .hide)
+    }
+
+    func test_command_shows_command_mode_and_hides() async throws {
+        let state = AppState(); let injector = FakeInjector(); let spy = SpyIndicator()
+        let controller = makeController(transcript: "open ZzNonexistentApp12345",
+                                        cleanup: nil, state: state, injector: injector, indicator: spy)
+        controller.commandHotkey(pressed: true)
+        controller.commandHotkey(pressed: false)
+        try await waitForCompletion(state)
+        XCTAssertEqual(spy.events.first, .show(.command))
+        XCTAssertEqual(spy.events.last, .hide)
+    }
+
+    func test_level_updates_forwarded_while_listening() async throws {
+        let state = AppState(); let injector = FakeInjector(); let spy = SpyIndicator()
+        let recorder = FakeRecorder()
+        let controller = makeController(transcript: "raw", cleanup: nil,
+                                        state: state, injector: injector,
+                                        indicator: spy, recorder: recorder)
+        controller.dictationHotkey(pressed: true)
+        recorder.emit(0.5)  // simulate a mic buffer
+        // The controller hops levels to the main actor via a Task; yield until it lands.
+        for _ in 0..<50 where !spy.events.contains(.level(0.5)) {
+            try await Task.sleep(nanoseconds: 5_000_000)
+        }
+        XCTAssertTrue(spy.events.contains(.level(0.5)))
+        controller.dictationHotkey(pressed: false)
+        try await waitForCompletion(state)
     }
 
     func test_commandMode_routesToAction_andDoesNotInject() async throws {
