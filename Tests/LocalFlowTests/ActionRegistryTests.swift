@@ -21,4 +21,11 @@ final class ActionRegistryTests: XCTestCase {
         XCTAssertNil(reg.match("open ../../../Users/evil/Malicious.app"))
         XCTAssertNil(reg.match("open /Applications/Safari.app"))
     }
+    func test_open_strips_trailing_punctuation_from_whisper_transcripts() {
+        // Whisper punctuates: speaking "open Microsoft Excel" transcribes as
+        // "Open Microsoft Excel." — the argument must not carry the period.
+        XCTAssertEqual(reg.match("Open Microsoft Excel.")?.argument, "Microsoft Excel")
+        XCTAssertEqual(reg.match("open Safari!")?.argument, "Safari")
+        XCTAssertEqual(reg.match("Open Notes?")?.argument, "Notes")
+    }
 }

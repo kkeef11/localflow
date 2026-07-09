@@ -31,8 +31,10 @@ struct ActionRegistry {
             // "open " is a fixed-length ASCII prefix, so dropping that many characters from
             // the original (case-preserved) string is exactly the case-insensitive prefix
             // range — no NSRange/utf16 offset juggling required.
+            // Whisper punctuates transcripts ("Open Microsoft Excel."), so strip
+            // trailing punctuation as well as whitespace — filenames are matched exactly.
             let arg = String(trimmed.dropFirst("open ".count))
-                .trimmingCharacters(in: .whitespaces)
+                .trimmingCharacters(in: .whitespaces.union(CharacterSet(charactersIn: ".,!?;:")))
             // Reject arguments containing path separators to prevent traversal
             guard !arg.contains("/") else { return nil }
             return (AppAction(id: "open") { name in
