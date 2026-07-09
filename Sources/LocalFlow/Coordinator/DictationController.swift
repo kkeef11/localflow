@@ -9,7 +9,7 @@ import Foundation
 /// isn't running or a `CleanupService` isn't wired up.
 @MainActor
 final class DictationController {
-    private let recorder: AudioRecording
+    private var recorder: AudioRecording
     private let transcriber: Transcribing
     private let cleanup: CleanupService?
     private let injector: TextInjecting
@@ -17,6 +17,12 @@ final class DictationController {
     private let contextProvider: ContextProvider
     private let router: CommandRouter
     private let llm: LLMGenerating
+    private let indicator: RecordingIndicating
+    /// Whether synthetic keystrokes will actually be delivered. macOS silently DROPS
+    /// posted events from apps without Accessibility trust — no error, no prompt — so
+    /// pasting without checking this looks like success while nothing lands (the
+    /// failure mode that cost a debugging session on 2026-07-09). Injectable for tests.
+    private let axTrusted: @Sendable () -> Bool
     private var recording = false
     private var capturedTone = "neutral"
     private enum Mode { case dictation, command }
@@ -24,7 +30,9 @@ final class DictationController {
 
     init(recorder: AudioRecording, transcriber: Transcribing, cleanup: CleanupService? = nil,
          injector: TextInjecting, state: AppState,
-         contextProvider: ContextProvider, router: CommandRouter, llm: LLMGenerating) {
+         contextProvider: ContextProvider, router: CommandRouter, llm: LLMGenerating,
+         indicator: RecordingIndicating = NoopIndicator(),
+         axTrusted: @escaping @Sendable () -> Bool = { HealthCheck.accessibilityGranted() }) {
         self.recorder = recorder
         self.transcriber = transcriber
         self.cleanup = cleanup
@@ -33,6 +41,8 @@ final class DictationController {
         self.contextProvider = contextProvider
         self.router = router
         self.llm = llm
+        self.indicator = indicator
+        self.axTrusted = axTrusted
     }
 
     func dictationHotkey(pressed: Bool) {
@@ -56,6 +66,9 @@ final class DictationController {
         capturedTone = contextProvider.toneLabel(forBundleID: ContextProvider.frontmostBundleID())
         recording = true
         state.status = "Listening…"
+        indicator.show(mode: mode == .command ? .command : .dictation)
+        let indicator = self.indicator
+        recorder.onLevel = { level in Task { @MainActor in indicator.updateLevel(level) } }
         try? recorder.start()
     }
 
@@ -64,7 +77,10 @@ final class DictationController {
         recording = false
         state.status = "Transcribing…"
         let samples = recorder.stop()
+        recorder.onLevel = nil
+        indicator.beginProcessing()
         Task { @MainActor in
+            defer { indicator.hide() }
             do {
                 let raw = try await transcriber.transcribe(samples: samples)
                 if mode == .command {
@@ -79,6 +95,12 @@ final class DictationController {
                     text = (try? await cleanup.clean(raw: text, toneLabel: capturedTone)) ?? text
                 }
                 guard !text.isEmpty else { state.status = "Idle"; return }
+                guard axTrusted() else {
+                    // Keep the transcript in history so it can be copied manually.
+                    state.record(text)
+                    state.status = "Grant Accessibility (paste blocked)"
+                    return
+                }
                 injector.inject(text)
                 state.record(text)
                 state.status = "Idle"
