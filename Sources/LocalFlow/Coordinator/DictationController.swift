@@ -1,26 +1,27 @@
 import Foundation
 
-/// Coordinates the Phase-1 MVP dictation flow: hold the dictation hotkey to record,
-/// release to transcribe and paste the raw transcript at the cursor.
+/// Coordinates the Phase-1/2 dictation flow: hold the dictation hotkey to record,
+/// release to transcribe, optionally clean up via the local LLM, and paste the
+/// result at the cursor.
 ///
-/// Deviation from the Task 1.5 brief: `CleanupService` (Ollama-based cleanup, Phase 2)
-/// does not exist yet, so this type has no `cleanup` property in this task. Task 2.3
-/// will add `cleanup: CleanupService?` and the "Cleaning…" status step back in; until
-/// then this controller always does the raw-paste-only path from the brief's `else`
-/// branch.
+/// `cleanup` is optional: when `nil` (or when cleanup throws), the controller
+/// falls back to the raw transcript, so the app degrades gracefully if Ollama
+/// isn't running or a `CleanupService` isn't wired up.
 @MainActor
 final class DictationController {
     private let recorder: AudioRecorder
     private let transcriber: Transcribing
+    private let cleanup: CleanupService?
     private let injector: TextInjecting
     private let state: AppState
     private let settings: SettingsStore
     private var recording = false
 
-    init(recorder: AudioRecorder, transcriber: Transcribing,
+    init(recorder: AudioRecorder, transcriber: Transcribing, cleanup: CleanupService? = nil,
          injector: TextInjecting, state: AppState, settings: SettingsStore) {
         self.recorder = recorder
         self.transcriber = transcriber
+        self.cleanup = cleanup
         self.injector = injector
         self.state = state
         self.settings = settings
@@ -44,7 +45,11 @@ final class DictationController {
         let samples = recorder.stop()
         Task { @MainActor in
             do {
-                let text = try await transcriber.transcribe(samples: samples)
+                var text = try await transcriber.transcribe(samples: samples)
+                if let cleanup {
+                    state.status = "Cleaning…"
+                    text = (try? await cleanup.clean(raw: text)) ?? text
+                }
                 guard !text.isEmpty else { state.status = "Idle"; return }
                 injector.inject(text)
                 state.record(text)
