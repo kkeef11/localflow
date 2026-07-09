@@ -53,9 +53,11 @@ struct LocalFlowApp: App {
         let cleanup = CleanupService(llm: llm, dictionary: settings.settings.dictionary)
         let contextProvider = ContextProvider(modes: settings.settings.contextModes)
         let router = CommandRouter(registry: ActionRegistry())
+        let indicator = RecordingIndicatorController()
         let controller = DictationController(recorder: recorder, transcriber: transcriber, cleanup: cleanup,
                                              injector: injector, state: state,
-                                             contextProvider: contextProvider, router: router, llm: llm)
+                                             contextProvider: contextProvider, router: router, llm: llm,
+                                             indicator: indicator)
         hotkeys.onDictation = { pressed in Task { @MainActor in controller.dictationHotkey(pressed: pressed) } }
         hotkeys.onCommand = { pressed in Task { @MainActor in controller.commandHotkey(pressed: pressed) } }
         hotkeys.start()
