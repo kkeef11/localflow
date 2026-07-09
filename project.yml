@@ -11,6 +11,12 @@ settings:
     CURRENT_PROJECT_VERSION: "1"
     PRODUCT_BUNDLE_IDENTIFIER: com.kkeefer.LocalFlow
     CODE_SIGN_STYLE: Automatic
+    # Code signing — project-level so the app AND test bundle share one Team ID
+    # (a signed app refuses to load an ad-hoc test bundle: "different Team IDs").
+    # Setup per machine: Xcode → Settings → Accounts → add Apple ID → Manage
+    # Certificates → + → Apple Development. Team ID = OU field of the cert.
+    DEVELOPMENT_TEAM: GWXZQMSVDT
+    CODE_SIGN_IDENTITY: "Apple Development"
 packages:
   WhisperKit:
     url: https://github.com/argmaxinc/WhisperKit
@@ -35,13 +41,8 @@ targets:
       base:
         INFOPLIST_KEY_LSUIElement: true
         ENABLE_HARDENED_RUNTIME: true
-        # Code signing — REQUIRED for stable Accessibility/Input Monitoring grants
-        # across rebuilds. Setup: Xcode → Settings → Accounts → add Apple ID →
-        # Manage Certificates → + → Apple Development. Then set your Team ID
-        # (the OU field: security find-certificate -c "Apple Development" -p |
-        #  openssl x509 -noout -subject).
-        DEVELOPMENT_TEAM: GWXZQMSVDT
-        CODE_SIGN_IDENTITY: "Apple Development"
+        # Code signing is configured at the project level (see top-level settings)
+        # so the app and test bundle share one Team ID.
     dependencies:
       - package: WhisperKit
   LocalFlowTests:
