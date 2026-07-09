@@ -43,9 +43,12 @@ final class DictationController {
 
     /// Mirrors `dictationHotkey(pressed:)` but tags the capture as `.command` so
     /// `finishRecording()` routes the transcript through `CommandRouter` instead of the
-    /// cleanup/inject dictation path. If both hotkeys are held, the most recently pressed
-    /// one wins `mode` (no interlocking/queueing) — an edge case not worth engineering
-    /// around for a solo-user, hold-and-release control scheme.
+    /// cleanup/inject dictation path. Mode is shared mutable state read AFTER transcription
+    /// completes (post-await), not captured at hotkey release. If another recording starts
+    /// while a prior transcription is still in flight, the prior session's transcript is
+    /// routed per the NEWEST mode (and cleanup uses the newest capturedTone) — "last press
+    /// wins", per design. Accepted trade-off: no interlocking; overlapping sessions are rare
+    /// in push-to-talk use.
     func commandHotkey(pressed: Bool) {
         if pressed { mode = .command; beginRecording() } else { finishRecording() }
     }
