@@ -36,10 +36,12 @@ struct LocalFlowApp: App {
         let llm = OllamaClient(model: settings.settings.llmModel)
         let cleanup = CleanupService(llm: llm, dictionary: settings.settings.dictionary)
         let contextProvider = ContextProvider(modes: settings.settings.contextModes)
+        let router = CommandRouter(registry: ActionRegistry())
         let controller = DictationController(recorder: recorder, transcriber: transcriber, cleanup: cleanup,
                                              injector: injector, state: state, settings: settings,
-                                             contextProvider: contextProvider)
+                                             contextProvider: contextProvider, router: router, llm: llm)
         hotkeys.onDictation = { pressed in Task { @MainActor in controller.dictationHotkey(pressed: pressed) } }
+        hotkeys.onCommand = { pressed in Task { @MainActor in controller.commandHotkey(pressed: pressed) } }
         hotkeys.start()
     }
 }
