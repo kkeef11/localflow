@@ -4,4 +4,8 @@
 protocol AudioRecording: Sendable {
     func start() throws
     func stop() -> [Float]
+    /// Called with a normalized RMS level (roughly 0...1) per captured buffer, from the
+    /// audio thread. Set before `start()`, cleared after `stop()`. Consumers must hop to
+    /// the main actor before touching UI.
+    var onLevel: (@Sendable (Float) -> Void)? { get set }
 }
