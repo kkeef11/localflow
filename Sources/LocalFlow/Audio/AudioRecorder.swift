@@ -18,7 +18,12 @@ private final class FeedFlag: @unchecked Sendable {
 /// The tap closure below runs on a real-time audio thread while `stop()` is called from the
 /// caller's thread (typically the main thread). `buffers` is therefore mutated from two threads
 /// and is guarded by `buffersLock` to avoid a data race / torn reads.
-final class AudioRecorder: @unchecked Sendable {
+///
+/// No voice-activity detection: the spec called for Silero VAD to trim/skip silence before
+/// transcription, but that was deliberately deferred for v1 — every captured buffer, silence
+/// included, is handed to the transcriber as-is. See README "Known limitations" for the
+/// user-facing consequence (silence can hallucinate a short transcribed phrase).
+final class AudioRecorder: AudioRecording, @unchecked Sendable {
     private let engine = AVAudioEngine()
     private var buffers: [Float] = []
     private let buffersLock = NSLock()

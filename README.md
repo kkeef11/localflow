@@ -75,3 +75,21 @@ the machine.
 - **Dictionary edits don't seem to take effect.** Custom dictionary entries are loaded when
   the transcription/cleanup pipeline is set up at launch. Restart LocalFlow after editing
   the dictionary for changes to apply.
+
+## Known limitations
+
+- **No voice-activity detection (VAD).** The spec called for Silero VAD to detect and trim
+  silence before transcription; v1 ships without it. Every captured buffer — including pure
+  silence — is handed to WhisperKit as-is, and Whisper-family models can hallucinate a short
+  phrase (e.g. "Thank you.") from silence, which LocalFlow will then paste at the cursor.
+  Workaround: avoid triggering a dictation with nothing to say (hold the hotkey only when
+  you're about to speak), and if a stray phrase gets pasted, undo it (Cmd+Z).
+- **Holding the other same-side modifier can suppress release detection.** For example,
+  holding Left Shift while tapping Right Shift can prevent the hotkey manager from seeing
+  the release event for Right Shift, leaving LocalFlow stuck in "Listening…". If recording
+  seems stuck, release all modifier keys (and re-tap the dictation/command hotkey once) to
+  reset it.
+- **First dictation blocks on a one-time ~3 GB model download.** WhisperKit downloads its
+  speech model on first launch; until that completes, the first dictation attempt will be
+  slow or unresponsive. This is one-time and cached locally — see the Troubleshooting note
+  above.
