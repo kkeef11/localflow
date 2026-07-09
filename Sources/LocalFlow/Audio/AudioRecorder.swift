@@ -30,6 +30,11 @@ final class AudioRecorder: AudioRecording, @unchecked Sendable {
     private let targetFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32,
                                              sampleRate: 16_000, channels: 1, interleaved: false)!
 
+    /// Set on the main thread before `start()`, read on the audio thread in the tap.
+    /// The class is already `@unchecked Sendable` and manages its own thread-safety
+    /// contract; no recording is in flight when this is mutated.
+    var onLevel: (@Sendable (Float) -> Void)?
+
     func start() throws {
         buffersLock.lock()
         buffers.removeAll()
@@ -64,6 +69,13 @@ final class AudioRecorder: AudioRecording, @unchecked Sendable {
             self.buffersLock.lock()
             self.buffers.append(contentsOf: samples)
             self.buffersLock.unlock()
+
+            if let onLevel = self.onLevel, !samples.isEmpty {
+                var sumSquares: Float = 0
+                for s in samples { sumSquares += s * s }
+                let rms = (sumSquares / Float(samples.count)).squareRoot()
+                onLevel(rms)
+            }
         }
 
         engine.prepare()
