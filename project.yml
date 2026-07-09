@@ -14,7 +14,7 @@ settings:
 packages:
   WhisperKit:
     url: https://github.com/argmaxinc/WhisperKit
-    from: "0.9.0"
+    exactVersion: "0.18.0"
 targets:
   LocalFlow:
     type: application
@@ -26,7 +26,6 @@ targets:
         CFBundleName: LocalFlow
         LSUIElement: true
         NSMicrophoneUsageDescription: "LocalFlow records your voice to transcribe it into text on-device."
-        NSAppleEventsUsageDescription: "LocalFlow runs app actions you request by voice."
     entitlements:
       path: Sources/LocalFlow/LocalFlow.entitlements
       properties:
