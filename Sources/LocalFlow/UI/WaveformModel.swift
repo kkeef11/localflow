@@ -4,7 +4,9 @@ import CoreGraphics
 /// waveform pill. Speech RMS is small (~0.02–0.1), so raw levels are lifted with a
 /// gain + square-root perceptual curve; the view maps intensity onto bar heights.
 struct WaveformModel: Equatable {
-    static let gain: CGFloat = 25.0
+    /// Tuned against measured speech on this hardware (median RMS ≈ 0.006,
+    /// p90 ≈ 0.011, max ≈ 0.015): median speech → ~0.58 intensity, peaks → ~0.93.
+    static let gain: CGFloat = 60.0
 
     let barCount: Int
     private(set) var bars: [CGFloat]

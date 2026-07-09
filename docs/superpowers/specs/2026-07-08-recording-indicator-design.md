@@ -16,9 +16,12 @@ pipeline finishes:
 | Processing | hotkey released (`finishRecording`) | Pulsing dots, same tint, until pipeline completes |
 | Done / Error | status returns to Idle or Error | Pill hides (errors surface in the menu bar as today) |
 
-**Mode differentiation — color only, no icons:**
-- Dictation (Right Option): bars/dots tinted **#9D00FF** (purple)
-- Command (Right Shift): bars/dots tinted **#37de43** (green)
+**Mode differentiation — variant per the reference design (`audio-pills-reference.html`), no icons:**
+- Dictation (Right Option): light pill — white background, black 1.5pt border, black bars/dots
+- Command (Right Shift): dark pill — black background, white 1.5pt border, white bars/dots
+- Pill: 120×44pt, fully rounded; 7 bars (4pt wide, 5pt gap, staggered base heights
+  20/28/16/24/14/26/18) scaling 30%→100% with live level; 3 dots, 8pt, 1.2s staggered pulse.
+- (v1 purple/green tint superseded by user revision on 2026-07-09.)
 
 ## 2. Components
 

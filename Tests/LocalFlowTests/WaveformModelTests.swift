@@ -19,13 +19,13 @@ final class WaveformModelTests: XCTestCase {
         XCTAssertEqual(m.bars.last, 1.0)
     }
     func test_push_applies_perceptual_sqrt_curve() {
-        // intensity = sqrt(min(1, level * 25)): speech RMS is small, so the curve
-        // lifts quiet levels into the visible range.
+        // intensity = sqrt(min(1, level * 60)): speech RMS is small (measured median
+        // ≈ 0.006 on this hardware), so the curve lifts quiet levels into visible range.
         var m = WaveformModel(barCount: 4)
-        m.push(level: 0.01)   // 0.01 * 25 = 0.25 → sqrt = 0.5
-        XCTAssertEqual(m.bars.last!, 0.5, accuracy: 0.0001)
-        m.push(level: 0.0004) // 0.0004 * 25 = 0.01 → sqrt = 0.1
-        XCTAssertEqual(m.bars.last!, 0.1, accuracy: 0.0001)
+        m.push(level: 0.006)    // 0.006 * 60 = 0.36 → sqrt = 0.6
+        XCTAssertEqual(m.bars.last!, 0.6, accuracy: 0.0001)
+        m.push(level: 0.00015)  // 0.00015 * 60 = 0.009 → sqrt ≈ 0.0949
+        XCTAssertEqual(m.bars.last!, 0.0949, accuracy: 0.001)
     }
     func test_push_clamps_out_of_range() {
         var m = WaveformModel(barCount: 2)
