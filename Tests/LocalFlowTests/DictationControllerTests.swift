@@ -64,7 +64,7 @@ final class DictationControllerTests: XCTestCase {
     /// on a terminal status ("Idle" or "Error: ...") instead of asserting on a fixed delay.
     private func waitForCompletion(_ state: AppState, timeout: TimeInterval = 5) async throws {
         let deadline = Date().addingTimeInterval(timeout)
-        while state.status != "Idle" && !state.status.hasPrefix("Error") {
+        while state.status != "Idle" && !state.status.hasPrefix("Error") && !state.status.hasPrefix("Grant") {
             if Date() > deadline {
                 XCTFail("Timed out waiting for DictationController to finish; status=\(state.status)")
                 return
@@ -79,7 +79,8 @@ final class DictationControllerTests: XCTestCase {
         state: AppState,
         injector: FakeInjector,
         indicator: RecordingIndicating = NoopIndicator(),
-        recorder: FakeRecorder = FakeRecorder()
+        recorder: FakeRecorder = FakeRecorder(),
+        axTrusted: @escaping @Sendable () -> Bool = { true }
     ) -> DictationController {
         DictationController(
             recorder: recorder,
@@ -90,8 +91,25 @@ final class DictationControllerTests: XCTestCase {
             contextProvider: ContextProvider(modes: [:]),
             router: CommandRouter(registry: ActionRegistry()),
             llm: FakeLLM(),
-            indicator: indicator
+            indicator: indicator,
+            axTrusted: axTrusted
         )
+    }
+
+    func test_missing_accessibility_blocks_paste_with_actionable_status() async throws {
+        let state = AppState()
+        let injector = FakeInjector()
+        let controller = makeController(transcript: "raw text", cleanup: nil,
+                                        state: state, injector: injector,
+                                        axTrusted: { false })
+
+        controller.dictationHotkey(pressed: true)
+        controller.dictationHotkey(pressed: false)
+        try await waitForCompletion(state)
+
+        XCTAssertNil(injector.injectedText, "must not attempt a paste that macOS will silently drop")
+        XCTAssertEqual(state.status, "Grant Accessibility (paste blocked)")
+        XCTAssertEqual(state.history.first, "raw text", "transcript must be preserved in history for manual copy")
     }
 
     func test_dictation_shows_processing_then_hides() async throws {

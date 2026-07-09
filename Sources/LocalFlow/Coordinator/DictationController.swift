@@ -18,6 +18,11 @@ final class DictationController {
     private let router: CommandRouter
     private let llm: LLMGenerating
     private let indicator: RecordingIndicating
+    /// Whether synthetic keystrokes will actually be delivered. macOS silently DROPS
+    /// posted events from apps without Accessibility trust — no error, no prompt — so
+    /// pasting without checking this looks like success while nothing lands (the
+    /// failure mode that cost a debugging session on 2026-07-09). Injectable for tests.
+    private let axTrusted: @Sendable () -> Bool
     private var recording = false
     private var capturedTone = "neutral"
     private enum Mode { case dictation, command }
@@ -26,7 +31,8 @@ final class DictationController {
     init(recorder: AudioRecording, transcriber: Transcribing, cleanup: CleanupService? = nil,
          injector: TextInjecting, state: AppState,
          contextProvider: ContextProvider, router: CommandRouter, llm: LLMGenerating,
-         indicator: RecordingIndicating = NoopIndicator()) {
+         indicator: RecordingIndicating = NoopIndicator(),
+         axTrusted: @escaping @Sendable () -> Bool = { HealthCheck.accessibilityGranted() }) {
         self.recorder = recorder
         self.transcriber = transcriber
         self.cleanup = cleanup
@@ -36,6 +42,7 @@ final class DictationController {
         self.router = router
         self.llm = llm
         self.indicator = indicator
+        self.axTrusted = axTrusted
     }
 
     func dictationHotkey(pressed: Bool) {
@@ -88,6 +95,12 @@ final class DictationController {
                     text = (try? await cleanup.clean(raw: text, toneLabel: capturedTone)) ?? text
                 }
                 guard !text.isEmpty else { state.status = "Idle"; return }
+                guard axTrusted() else {
+                    // Keep the transcript in history so it can be copied manually.
+                    state.record(text)
+                    state.status = "Grant Accessibility (paste blocked)"
+                    return
+                }
                 injector.inject(text)
                 state.record(text)
                 state.status = "Idle"

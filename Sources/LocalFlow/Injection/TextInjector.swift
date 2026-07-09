@@ -1,5 +1,7 @@
 import AppKit
 import ApplicationServices
+import Carbon.HIToolbox
+import os
 
 /// Injects transcribed text into whatever app currently has focus, and reads/replaces
 /// the current text selection via the Accessibility API.
@@ -21,11 +23,17 @@ final class TextInjector: TextInjecting {
     /// type-level doc comment for the accepted race this trades off against.
     private static let pasteboardRestoreDelay: TimeInterval = 0.25
 
+    /// Debug visibility into the injection path: `/usr/bin/log stream --predicate
+    /// 'subsystem == "com.kkeefer.LocalFlow"' --level debug`.
+    private static let log = Logger(subsystem: "com.kkeefer.LocalFlow", category: "inject")
+
     func inject(_ text: String) {
         let pb = NSPasteboard.general
         let saved = pb.string(forType: .string)
         pb.clearContents()
-        pb.setString(text, forType: .string)
+        let wrote = pb.setString(text, forType: .string)
+        let frontmost = NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "unknown"
+        Self.log.debug("inject: chars=\(text.count) pbWrite=\(wrote) axTrusted=\(AXIsProcessTrusted()) target=\(frontmost)")
         pasteCmdV()
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.pasteboardRestoreDelay) {
             pb.clearContents()
@@ -64,7 +72,9 @@ final class TextInjector: TextInjecting {
         vDown?.flags = .maskCommand
         let vUp = CGEvent(keyboardEventSource: src, virtualKey: 0x09, keyDown: false)
         vUp?.flags = .maskCommand
+        Self.log.debug("pasteCmdV: src=\(src != nil) down=\(vDown != nil) up=\(vUp != nil) secureInput=\(IsSecureEventInputEnabled())")
         vDown?.post(tap: .cgSessionEventTap)
         vUp?.post(tap: .cgSessionEventTap)
+        Self.log.debug("pasteCmdV: events posted")
     }
 }

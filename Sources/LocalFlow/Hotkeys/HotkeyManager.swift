@@ -1,5 +1,6 @@
 import CoreGraphics
 import AppKit
+import os
 
 /// Listens globally for modifier-key flag changes via a CGEvent tap and reports
 /// press/release of the two hotkeys LocalFlow cares about:
@@ -14,6 +15,9 @@ import AppKit
 /// reference held by whoever created this manager (LocalFlowApp), matching the brief
 /// exactly.
 final class HotkeyManager {
+    /// Debug visibility: `/usr/bin/log stream --predicate 'subsystem ==
+    /// "com.kkeefer.LocalFlow"' --level debug` shows tap lifecycle + hotkey hits.
+    fileprivate static let log = Logger(subsystem: "com.kkeefer.LocalFlow", category: "hotkeys")
     var onDictation: (Bool) -> Void = { _ in }
     var onCommand: (Bool) -> Void = { _ in }
     private var tap: CFMachPort?
@@ -26,10 +30,14 @@ final class HotkeyManager {
             // load) by delivering .tapDisabledByTimeout. Without re-enabling here, the
             // hotkeys die permanently — the "worked once, then never again" failure mode.
             if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+                HotkeyManager.log.debug("tap disabled by system (\(type.rawValue)) — re-enabling")
                 if let tap = mgr.tap { CGEvent.tapEnable(tap: tap, enable: true) }
                 return nil
             }
             let keycode = event.getIntegerValueField(.keyboardEventKeycode)
+            if keycode == 61 || keycode == 60 {
+                HotkeyManager.log.debug("hotkey keycode=\(keycode) flags=\(event.flags.rawValue)")
+            }
             if keycode == 61 { mgr.onDictation(event.flags.contains(.maskAlternate)) }
             if keycode == 60 { mgr.onCommand(event.flags.contains(.maskShift)) }
             return Unmanaged.passUnretained(event)
@@ -39,11 +47,12 @@ final class HotkeyManager {
                                 callback: callback,
                                 userInfo: Unmanaged.passUnretained(self).toOpaque())
         guard let tap else {
-            NSLog("LocalFlow: event tap failed — grant Input Monitoring & Accessibility")
+            Self.log.error("event tap creation FAILED — Input Monitoring/Accessibility not effective")
             return
         }
         let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
         CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
         CGEvent.tapEnable(tap: tap, enable: true)
+        Self.log.debug("event tap created and enabled")
     }
 }

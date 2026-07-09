@@ -7,6 +7,7 @@ struct LocalFlowApp: App {
     var body: some Scene {
         MenuBarExtra("LocalFlow", systemImage: "mic.fill") {
             MenuBarView(state: delegate.state, onDictionarySave: delegate.saveDictionary)
+                .onAppear { delegate.refreshHealth() } // re-check every time the menu opens
         }
         .menuBarExtraStyle(.window)
     }
@@ -44,14 +45,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         hotkeys.start()
         state.dictionaryText = settings.settings.dictionary.joined(separator: ", ")
 
-        // Best-effort readiness probe: surfaces a warning status if Accessibility isn't
-        // granted (hotkeys/injection won't work) or Ollama isn't reachable (cleanup will be
-        // skipped). Neither check blocks dictation — it still works via WhisperKit alone.
+        refreshHealth()
+    }
+
+    /// Best-effort readiness probe: surfaces a warning status if Accessibility isn't
+    /// granted (injection won't land) or Ollama isn't reachable (cleanup will be skipped).
+    /// Runs at launch and again on every menu open, so the status reflects the CURRENT
+    /// permission state — not a stale launch-time snapshot. Only overwrites Idle/warning
+    /// statuses; never stomps an in-flight "Listening…"/"Transcribing…"/"Cleaning…".
+    func refreshHealth() {
         Task { @MainActor in
+            let overwritable = state.status == "Idle"
+                || state.status.hasPrefix("Grant")
+                || state.status.hasPrefix("Ollama")
+            guard overwritable else { return }
             if !HealthCheck.accessibilityGranted() {
                 state.status = "Grant Accessibility & Input Monitoring"
             } else if !(await HealthCheck.ollamaReachable()) {
                 state.status = "Ollama not running (ollama serve)"
+            } else {
+                state.status = "Idle"
             }
         }
     }
