@@ -9,12 +9,11 @@ import Foundation
 /// isn't running or a `CleanupService` isn't wired up.
 @MainActor
 final class DictationController {
-    private let recorder: AudioRecorder
+    private let recorder: AudioRecording
     private let transcriber: Transcribing
     private let cleanup: CleanupService?
     private let injector: TextInjecting
     private let state: AppState
-    private let settings: SettingsStore
     private let contextProvider: ContextProvider
     private let router: CommandRouter
     private let llm: LLMGenerating
@@ -23,15 +22,14 @@ final class DictationController {
     private enum Mode { case dictation, command }
     private var mode: Mode = .dictation
 
-    init(recorder: AudioRecorder, transcriber: Transcribing, cleanup: CleanupService? = nil,
-         injector: TextInjecting, state: AppState, settings: SettingsStore,
+    init(recorder: AudioRecording, transcriber: Transcribing, cleanup: CleanupService? = nil,
+         injector: TextInjecting, state: AppState,
          contextProvider: ContextProvider, router: CommandRouter, llm: LLMGenerating) {
         self.recorder = recorder
         self.transcriber = transcriber
         self.cleanup = cleanup
         self.injector = injector
         self.state = state
-        self.settings = settings
         self.contextProvider = contextProvider
         self.router = router
         self.llm = llm
