@@ -17,4 +17,8 @@ final class ActionRegistryTests: XCTestCase {
     func test_unrecognized_returns_nil() {
         XCTAssertNil(reg.match("make this more formal"))
     }
+    func test_open_with_path_traversal_returns_nil() {
+        XCTAssertNil(reg.match("open ../../../Users/evil/Malicious.app"))
+        XCTAssertNil(reg.match("open /Applications/Safari.app"))
+    }
 }

@@ -33,6 +33,8 @@ struct ActionRegistry {
             // range — no NSRange/utf16 offset juggling required.
             let arg = String(trimmed.dropFirst("open ".count))
                 .trimmingCharacters(in: .whitespaces)
+            // Reject arguments containing path separators to prevent traversal
+            guard !arg.contains("/") else { return nil }
             return (AppAction(id: "open") { name in
                 guard let name, !name.isEmpty else { return }
                 guard let url = Self.resolveApplicationURL(named: name) else { return }
@@ -64,6 +66,7 @@ struct ActionRegistry {
     /// `openApplication(at:configuration:)`. This only finds top-level apps in standard
     /// locations, which is a fine trade-off for a voice command whitelist.
     private static func resolveApplicationURL(named name: String) -> URL? {
+        guard !name.contains("/"), !name.contains("..") else { return nil }
         let candidateFileNames = name.lowercased().hasSuffix(".app") ? [name] : [name, "\(name).app"]
         let fm = FileManager.default
 
