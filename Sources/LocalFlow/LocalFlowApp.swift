@@ -59,5 +59,16 @@ struct LocalFlowApp: App {
         hotkeys.onDictation = { pressed in Task { @MainActor in controller.dictationHotkey(pressed: pressed) } }
         hotkeys.onCommand = { pressed in Task { @MainActor in controller.commandHotkey(pressed: pressed) } }
         hotkeys.start()
+
+        // Best-effort readiness probe: surfaces a warning status if Accessibility isn't
+        // granted (hotkeys/injection won't work) or Ollama isn't reachable (cleanup will be
+        // skipped). Neither check blocks dictation — it still works via WhisperKit alone.
+        Task { @MainActor in
+            if !HealthCheck.accessibilityGranted() {
+                state.status = "Grant Accessibility & Input Monitoring"
+            } else if !(await HealthCheck.ollamaReachable()) {
+                state.status = "Ollama not running (ollama serve)"
+            }
+        }
     }
 }
