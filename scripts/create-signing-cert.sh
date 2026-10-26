@@ -66,6 +66,6 @@ Next:
      next release resets every user's permissions.
   2. Add them as GitHub secrets (from the repository directory):
        gh secret set SELF_SIGNED_P12_BASE64 < <(base64 -i "$OUT/LocalFlow-Self-Signed.p12")
-       gh secret set SELF_SIGNED_P12_PASSWORD < "$OUT/p12-password.txt"
+       tr -d '\n' < "$OUT/p12-password.txt" | gh secret set SELF_SIGNED_P12_PASSWORD
   3. Tag a release: see docs/RELEASING.md.
 EOF
