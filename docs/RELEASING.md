@@ -1,8 +1,56 @@
 # Releasing LocalFlow
 
-How a maintainer produces a signed, notarized `LocalFlow-<version>.zip` on GitHub Releases.
-The pipeline is `.github/workflows/release.yml`, which runs `scripts/release.sh`. You can
-run the same script locally.
+How a maintainer produces a signed `LocalFlow-<version>.zip` on GitHub Releases. The
+pipeline is `.github/workflows/release.yml`, which runs `scripts/release.sh`. You can run
+the same script locally.
+
+## Two signing routes
+
+The workflow picks the route from the repository secrets that exist.
+
+| | Self-signed (free) | Developer ID (US$99/year) |
+|---|---|---|
+| Secrets | `SELF_SIGNED_P12_BASE64`, `SELF_SIGNED_P12_PASSWORD` | the six in section 2 |
+| First launch | Blocked by Gatekeeper; users click **Open Anyway** in System Settings once per version | Opens normally after the usual "downloaded from the internet" prompt |
+| Permissions kept across upgrades | Yes (same certificate) | Yes (same team) |
+| Who it suits | You and people you can walk through install | Anyone |
+
+If both sets of secrets exist, Developer ID wins. Switching routes changes the app's
+signature, so every user grants Microphone, Accessibility and Input Monitoring once more.
+
+## Self-signed releases (free)
+
+**Status:** verified locally. Two builds signed with the same certificate had different
+code but an identical designated requirement (`identifier "com.kkeefer.LocalFlow" and
+certificate leaf = H"…"`), which is what macOS checks when deciding whether earlier
+permission grants still apply. Not yet verified: an actual upgrade on a Mac with
+permissions granted, and a run of the workflow on GitHub.
+
+1. **Create the certificate once.** It is written outside the repository:
+   ```bash
+   scripts/create-signing-cert.sh            # -> ~/LocalFlow-signing/
+   ```
+   This runs only `openssl`. It doesn't touch your keychain or system settings. The
+   certificate is valid for 10 years.
+2. **Back it up.** Store `LocalFlow-Self-Signed.p12` and `p12-password.txt` in a password
+   manager. **Never generate a second one.** A release signed with a different
+   certificate resets every user's permissions. The script refuses to overwrite an
+   existing certificate.
+3. **Add the two secrets** (the script prints these commands with your paths):
+   ```bash
+   gh secret set SELF_SIGNED_P12_BASE64 < <(base64 -i ~/LocalFlow-signing/LocalFlow-Self-Signed.p12)
+   gh secret set SELF_SIGNED_P12_PASSWORD < ~/LocalFlow-signing/p12-password.txt
+   ```
+4. **Tag a release** as in section 4. The draft release includes install instructions for
+   users (`.github/release-notes-self-signed.md`), above the generated changelog.
+
+To build a self-signed release on your own Mac, import the `.p12` into a keychain and run
+`scripts/release.sh 0.2.0 --self-signed`. Pass `SIGNING_KEYCHAIN=<path>` if it isn't in
+your login keychain. The script adds that keychain to your search list while it runs and
+restores the list afterwards.
+
+The rest of this document covers the Developer ID route. Sections 3–6 (versioning,
+making a release, verifying, troubleshooting) apply to both.
 
 > **Status:** the signed and notarized path has not been run end to end yet, because it
 > needs Apple Developer Program credentials. Only the unsigned path (`--unsigned`) has
@@ -11,7 +59,7 @@ run the same script locally.
 > (hardened runtime, team, `get-task-allow`). Do the first release as a dry run: push a
 > `v0.1.0-rc.1` tag, then review the draft release before publishing.
 
-## 1. One-time Apple setup
+## 1. One-time Apple setup (Developer ID route only)
 
 You need a paid **Apple Developer Program** membership (US$99/year). A free Apple ID can
 sign builds for your own Mac, but it can't issue Developer ID certificates or notarize.
@@ -60,8 +108,10 @@ gh secret set NOTARY_API_ISSUER_ID        # a UUID
 | `NOTARY_API_KEY_ID` | That key's Key ID |
 | `NOTARY_API_ISSUER_ID` | App Store Connect Issuer ID |
 
-If any secret is missing, the workflow fails at the "Check signing secrets" step and lists
-the missing names. It never produces an unsigned "release".
+The "Choose signing mode" step uses Developer ID when all six are set and the self-signed
+certificate otherwise. If only some of the six are set, it fails and lists the missing
+names rather than silently falling back. With no signing secrets at all, it fails. It
+never produces an unsigned "release".
 
 ## 3. Versioning
 
@@ -95,11 +145,13 @@ The workflow does the following:
 1. Validates the tag.
 2. Runs the unit tests.
 3. Imports the certificate into a throwaway keychain.
-4. Archives a Release build with the hardened runtime and a secure timestamp.
-5. Exports it with Developer ID signing.
-6. Checks the bundle ID, version, entitlements and signature.
-7. Notarizes the app with `notarytool`, then staples the ticket.
-8. Checks the result with `stapler validate` and `spctl`.
+4. Archives a Release build with the hardened runtime.
+5. Signs it: Developer ID export (with a secure timestamp), or a re-sign with the
+   self-signed certificate.
+6. Checks the bundle ID, version, entitlements and signature. For self-signed builds it
+   also checks that the designated requirement pins the certificate.
+7. Developer ID only: notarizes the app with `notarytool` and staples the ticket.
+8. Developer ID only: checks the result with `stapler validate` and `spctl`.
 9. Zips the app with `ditto` and writes a `.sha256` file.
 10. Creates a **draft** release with both files attached.
 
@@ -139,6 +191,14 @@ codesign -dv --verbose=4 LocalFlow.app                # Authority=Developer ID A
 codesign --verify --deep --strict --verbose=2 LocalFlow.app
 spctl --assess --type execute --verbose=4 LocalFlow.app   # accepted, source=Notarized Developer ID
 xcrun stapler validate LocalFlow.app                  # The validate action worked!
+```
+
+For a self-signed release, the expected results differ:
+
+```bash
+codesign -dv --verbose=4 LocalFlow.app       # Authority=LocalFlow Self-Signed, flags=…(runtime)
+codesign -d -r- LocalFlow.app                # … certificate leaf = H"<same hash every release>"
+spctl --assess --type execute LocalFlow.app  # rejected (expected: not notarized)
 ```
 
 ## 6. Troubleshooting release failures
