@@ -25,4 +25,32 @@ final class SettingsStoreTests: XCTestCase {
         XCTAssertEqual(store.settings.sttModel, "large-v3")
         XCTAssertEqual(store.settings.llmModel, "qwen2.5:7b")
     }
+
+    func test_older_file_missing_keys_keeps_values_and_fills_defaults() throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("lf-\(UUID()).json")
+        addTeardownBlock { try? FileManager.default.removeItem(at: url) }
+        try #"{"dictionary":["Acme"],"llmModel":"llama3"}"#.write(to: url, atomically: true, encoding: .utf8)
+
+        let store = SettingsStore(fileURL: url)
+        XCTAssertEqual(store.settings.dictionary, ["Acme"])
+        XCTAssertEqual(store.settings.llmModel, "llama3")
+        XCTAssertEqual(store.settings.sttModel, "large-v3")
+        XCTAssertEqual(store.settings.contextModes, Settings().contextModes)
+    }
+
+    func test_unreadable_file_is_backed_up_not_overwritten() throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("lf-\(UUID()).json")
+        let backup = url.appendingPathExtension("unreadable")
+        addTeardownBlock {
+            try? FileManager.default.removeItem(at: url)
+            try? FileManager.default.removeItem(at: backup)
+        }
+        try "not json".write(to: url, atomically: true, encoding: .utf8)
+
+        let store = SettingsStore(fileURL: url)
+        store.settings.dictionary = ["new"]
+        XCTAssertEqual(try String(contentsOf: backup, encoding: .utf8), "not json")
+    }
 }

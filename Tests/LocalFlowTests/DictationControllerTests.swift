@@ -6,7 +6,12 @@ import XCTest
 /// contents don't matter for these tests.
 private final class FakeRecorder: AudioRecording, @unchecked Sendable {
     var onLevel: (@Sendable (Float) -> Void)?
-    func start() throws {}
+    var startError: Error?
+    private(set) var started = false
+    func start() throws {
+        if let startError { throw startError }
+        started = true
+    }
     func stop() -> [Float] { [] }
     /// Test helper: simulate the audio thread delivering a level.
     func emit(_ level: Float) { onLevel?(level) }
@@ -80,7 +85,8 @@ final class DictationControllerTests: XCTestCase {
         injector: FakeInjector,
         indicator: RecordingIndicating = NoopIndicator(),
         recorder: FakeRecorder = FakeRecorder(),
-        axTrusted: @escaping @Sendable () -> Bool = { true }
+        axTrusted: @escaping @Sendable () -> Bool = { true },
+        micAuthorized: @escaping @Sendable () -> Bool = { true }
     ) -> DictationController {
         DictationController(
             recorder: recorder,
@@ -92,7 +98,8 @@ final class DictationControllerTests: XCTestCase {
             router: CommandRouter(registry: ActionRegistry()),
             llm: FakeLLM(),
             indicator: indicator,
-            axTrusted: axTrusted
+            axTrusted: axTrusted,
+            micAuthorized: micAuthorized
         )
     }
 
@@ -110,6 +117,62 @@ final class DictationControllerTests: XCTestCase {
         XCTAssertNil(injector.injectedText, "must not attempt a paste that macOS will silently drop")
         XCTAssertEqual(state.status, "Grant Accessibility (paste blocked)")
         XCTAssertEqual(state.history.first, "raw text", "transcript must be preserved in history for manual copy")
+    }
+
+    func test_missing_microphone_permission_blocks_recording() async throws {
+        let state = AppState(); let injector = FakeInjector(); let spy = SpyIndicator()
+        let recorder = FakeRecorder()
+        let controller = makeController(transcript: "Thank you.", cleanup: nil, state: state,
+                                        injector: injector, indicator: spy, recorder: recorder,
+                                        micAuthorized: { false })
+        controller.dictationHotkey(pressed: true)
+        controller.dictationHotkey(pressed: false)
+        XCTAssertFalse(recorder.started, "must not record silence that Whisper would hallucinate over")
+        XCTAssertEqual(state.status, "Grant Microphone access")
+        XCTAssertTrue(spy.events.isEmpty)
+        XCTAssertNil(injector.injectedText)
+    }
+
+    func test_missing_speech_model_blocks_recording() async throws {
+        let state = AppState(); let injector = FakeInjector()
+        state.setup.speechModel = .notDownloaded
+        let recorder = FakeRecorder()
+        let controller = makeController(transcript: "raw", cleanup: nil, state: state,
+                                        injector: injector, recorder: recorder)
+        controller.dictationHotkey(pressed: true)
+        controller.dictationHotkey(pressed: false)
+        XCTAssertFalse(recorder.started)
+        XCTAssertEqual(state.status, "Speech model not ready — open Setup")
+        XCTAssertNil(injector.injectedText)
+    }
+
+    func test_speech_model_still_downloading_or_loading_blocks_recording() async throws {
+        for model in [SpeechModelState.downloading(fraction: 0.3), .loading] {
+            let state = AppState(); let injector = FakeInjector()
+            state.setup.speechModel = model
+            let recorder = FakeRecorder()
+            let controller = makeController(transcript: "raw", cleanup: nil, state: state,
+                                            injector: injector, recorder: recorder)
+            controller.dictationHotkey(pressed: true)
+            controller.dictationHotkey(pressed: false)
+            XCTAssertFalse(recorder.started, "\(model): would paste into a random app minutes later")
+            XCTAssertEqual(state.status, "Speech model still preparing — try again shortly")
+            XCTAssertNil(injector.injectedText)
+        }
+    }
+
+    func test_recorder_start_failure_reports_error_and_resets() async throws {
+        let state = AppState(); let injector = FakeInjector(); let spy = SpyIndicator()
+        let recorder = FakeRecorder()
+        recorder.startError = FakeLLMError.simulatedFailure
+        let controller = makeController(transcript: "raw", cleanup: nil, state: state,
+                                        injector: injector, indicator: spy, recorder: recorder)
+        controller.dictationHotkey(pressed: true)
+        XCTAssertTrue(state.status.hasPrefix("Error: microphone unavailable"))
+        XCTAssertEqual(spy.events.last, .hide)
+        controller.dictationHotkey(pressed: false) // release after a failed start is a no-op
+        XCTAssertTrue(state.status.hasPrefix("Error: microphone unavailable"))
+        XCTAssertNil(injector.injectedText)
     }
 
     func test_dictation_shows_processing_then_hides() async throws {
@@ -210,5 +273,6 @@ final class DictationControllerTests: XCTestCase {
         try await waitForCompletion(state)
 
         XCTAssertEqual(injector.injectedText, "raw text")
+        XCTAssertNotNil(state.notice, "a skipped cleanup must be visible, not silent")
     }
 }

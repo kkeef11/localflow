@@ -4,19 +4,18 @@ options:
   deploymentTarget:
     macOS: "14.0"
   createIntermediateGroups: true
+# Signing lives in an xcconfig so each developer can use their own team (or none) without
+# editing tracked files. See Config/LocalFlow.xcconfig.
+configFiles:
+  Debug: Config/LocalFlow.xcconfig
+  Release: Config/LocalFlow.xcconfig
 settings:
   base:
     SWIFT_VERSION: "6.0"
     MARKETING_VERSION: "0.1.0"
     CURRENT_PROJECT_VERSION: "1"
+    # Never change this: macOS keys permission grants and the settings folder to it.
     PRODUCT_BUNDLE_IDENTIFIER: com.kkeefer.LocalFlow
-    CODE_SIGN_STYLE: Automatic
-    # Code signing — project-level so the app AND test bundle share one Team ID
-    # (a signed app refuses to load an ad-hoc test bundle: "different Team IDs").
-    # Setup per machine: Xcode → Settings → Accounts → add Apple ID → Manage
-    # Certificates → + → Apple Development. Team ID = OU field of the cert.
-    DEVELOPMENT_TEAM: GWXZQMSVDT
-    CODE_SIGN_IDENTITY: "Apple Development"
 packages:
   WhisperKit:
     url: https://github.com/argmaxinc/WhisperKit
@@ -30,6 +29,8 @@ targets:
       path: Sources/LocalFlow/Info.plist
       properties:
         CFBundleName: LocalFlow
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         LSUIElement: true
         NSMicrophoneUsageDescription: "LocalFlow records your voice to transcribe it into text on-device."
     entitlements:
@@ -41,10 +42,12 @@ targets:
       base:
         INFOPLIST_KEY_LSUIElement: true
         ENABLE_HARDENED_RUNTIME: true
-        # Code signing is configured at the project level (see top-level settings)
+        # Code signing is configured at the project level (Config/LocalFlow.xcconfig)
         # so the app and test bundle share one Team ID.
     dependencies:
       - package: WhisperKit
+    scheme:
+      testTargets: [LocalFlowTests]
   LocalFlowTests:
     type: bundle.unit-test
     platform: macOS

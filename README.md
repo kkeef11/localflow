@@ -1,96 +1,211 @@
 # LocalFlow
 
-Fully-local, offline macOS dictation menu-bar app (a Wispr Flow clone). WhisperKit does
-on-device speech-to-text; a local Ollama model cleans up the transcript, answers inline
-formatting requests, and routes voice commands to app actions. No audio or text ever leaves
-the machine.
+Fully local, offline macOS dictation for the menu bar. Hold a key, speak, and the text is
+pasted at your cursor. [WhisperKit](https://github.com/argmaxinc/WhisperKit) turns speech
+into text on-device. An optional local [Ollama](https://ollama.com) model removes filler
+words, fixes punctuation, and handles voice commands. Audio and text never leave your Mac.
+The only network use is the one-time model downloads.
 
-## Setup (each Mac)
+## What LocalFlow does
 
-1. **Install dependencies**
-   ```bash
-   brew install xcodegen ollama
-   ```
-2. **Start Ollama and pull the cleanup model**
-   ```bash
-   brew services start ollama
-   ollama pull qwen2.5:7b
-   ```
-3. **Clone the repo**
-   ```bash
-   git clone <repo> && cd localflow
-   ```
-4. **Configure code signing (recommended — see Troubleshooting below for why)**
-
-   Without a signing identity, Xcode ad-hoc signs the app ("Sign to Run Locally"). This
-   builds and runs fine, but macOS treats every rebuild as a new, untrusted binary, so
-   Accessibility / Input Monitoring grants get silently revoked each time you rebuild.
-
-   To fix this once per Mac:
-   1. Xcode → Settings → Accounts → add your Apple ID.
-   2. Manage Certificates → **+** → Apple Development.
-   3. Find your 10-character Team ID: `security find-identity -v -p codesigning`.
-   4. In `project.yml`, under `targets.LocalFlow.settings.base`, uncomment and fill in:
-      ```yaml
-      DEVELOPMENT_TEAM: YOUR_TEAM_ID
-      CODE_SIGN_IDENTITY: "Apple Development"
-      ```
-
-   If you skip this step, the app still builds and runs — you'll just need to re-grant
-   permissions after every rebuild (see Troubleshooting).
-5. **Generate and build the Xcode project**
-   ```bash
-   xcodegen generate
-   xcodebuild -project LocalFlow.xcodeproj -scheme LocalFlow -destination 'platform=macOS' build
-   ```
-6. **Launch the built app** (from `~/Library/Developer/Xcode/DerivedData/.../Build/Products/Debug/LocalFlow.app`,
-   or run it from Xcode) and grant **Microphone**, **Accessibility**, and **Input
-   Monitoring** when prompted (System Settings → Privacy & Security).
-
-## Use
-
-- Hold **Right Option**, speak, release → your speech is transcribed, cleaned up, and
+- **Hold Right Option**, speak, release → your speech is transcribed, cleaned up, and
   pasted at the cursor.
-- Hold **Right Shift**, speak a command (e.g. "open Safari") or first select some text and
-  speak a rewrite instruction (e.g. "make this more formal") → LocalFlow routes it to an
-  app action or replaces the selection with the rewritten text.
-- Use the menu-bar item to edit your custom dictionary (proper nouns, jargon — biases both
-  transcription and cleanup) and to see the current status (idle / recording /
-  transcribing / error), shown as a colored dot plus text.
+- **Hold Right Shift** and speak a command ("open Safari"). Or select text first and say a
+  rewrite instruction ("make this more formal"), and LocalFlow replaces the selection.
+- The menu-bar item shows status, recent dictations, the setup checklist, and a custom
+  vocabulary for names and jargon. The vocabulary biases both transcription and cleanup.
+
+## System requirements
+
+| | |
+|---|---|
+| macOS | 14 Sonoma or later |
+| Mac | Apple Silicon recommended. Intel builds but hasn't been tested, and Whisper large-v3 is very slow there. |
+| Memory | 16 GB recommended when using Ollama cleanup (Whisper ≈ 3 GB + qwen2.5:7b ≈ 5 GB). 8 GB works without Ollama. |
+| Disk | ~3 GB for the speech model, plus ~4.7 GB for the optional cleanup model |
+| Network | Only for the first-run model downloads |
+
+## Installation — downloaded release
+
+1. Download `LocalFlow-<version>.zip` from
+   [Releases](https://github.com/kkeef11/localflow/releases). If you want to check the
+   download, also get the `.sha256` file and run
+   `shasum -a 256 -c LocalFlow-<version>.zip.sha256`. Safari unzips downloads and deletes
+   the zip by default; to check it, download with another browser or turn off
+   Safari → Settings → General → "Open 'safe' files after downloading".
+2. Double-click the zip, then drag **LocalFlow.app** into **Applications**.
+3. Open LocalFlow from Applications. macOS asks to confirm an app downloaded from the
+   internet; click **Open**. Release builds are notarized by Apple.
+4. LocalFlow runs in the menu bar (microphone icon), not the Dock. Its **Setup** window
+   opens on first launch.
+
+You don't need Xcode, Homebrew, or Terminal.
+
+## First-run setup
+
+The setup window lists what's missing. You can reopen it any time from the menu (**Setup…**).
+Each row has one button for its next step, and rows turn green as you finish them.
+
+| Item | Why | How |
+|---|---|---|
+| **Microphone** | To hear you | Click **Allow** in the system prompt |
+| **Accessibility** | To paste at the cursor and read selected text | **Open Settings** → turn on LocalFlow |
+| **Input Monitoring** | To detect the Right Option / Right Shift hotkeys | **Open Settings** → turn on LocalFlow, then click **Relaunch** if macOS asks |
+| **Speech model** | Whisper large-v3 speech recognition | Click **Download (~3 GB)** — one time; progress shows in the window and status line |
+| **Ollama** (optional) | Cleanup and voice commands | **Get Ollama** → install the app → **Start Ollama** → **Download** the model (several GB) |
+
+What happens if a step is skipped:
+
+- **Microphone off:** LocalFlow won't record, and it tells you why. It doesn't record
+  silence.
+- **Accessibility off:** your transcript is kept in the menu's history instead of pasted.
+- **Ollama missing:** dictation still works and pastes the raw transcript.
+- **Dictation waits for the speech model.** Until it has finished downloading and
+  preparing, the hotkeys show a status message instead of recording.
+- **Nothing downloads without a click.** The first time the speech model loads, it is also
+  optimized for your Mac, which can take several minutes. Later launches are quick and
+  fully offline.
+
+## Installation — build from source
+
+Needs Xcode 26 or later (Swift 6.2, required by the pinned Swift packages). The CI and
+release builds use Xcode 26.6.
+
+```bash
+git clone https://github.com/kkeef11/localflow.git
+cd localflow
+scripts/setup-macos.sh        # checks/installs prerequisites, configures signing, builds
+open build/DerivedData/Build/Products/Debug/LocalFlow.app
+```
+
+`setup-macos.sh` is safe to re-run. It checks macOS, Xcode (including the license and
+first-launch setup), and Homebrew. It installs XcodeGen and, optionally, Ollama. It checks
+the cleanup model and offers to download it (`--pull-model` downloads without asking). It
+sets up code signing and builds the app. It asks before installing anything, never uses
+`sudo`, and prints the exact command for any step you need to do yourself. Use `--yes` to
+install tools without prompts, or `--no-build` to only check.
+
+### Code signing for development
+
+There's nothing to edit in tracked files.
+
+- **No Apple account (default):** builds are ad-hoc signed. They work, but macOS treats
+  every rebuild as a new app, so you must grant Accessibility and Input Monitoring again
+  after each rebuild.
+- **Grants that survive rebuilds:** in Xcode → Settings → Accounts, add any Apple ID (free
+  is fine), then **Manage Certificates → + → Apple Development**. Re-run
+  `scripts/setup-macos.sh`. It writes the git-ignored file
+  `Config/Signing.local.xcconfig` with your team:
+  ```
+  DEVELOPMENT_TEAM = ABCDE12345
+  CODE_SIGN_IDENTITY = Apple Development
+  ```
+  For a single build, you can set `LOCALFLOW_DEVELOPMENT_TEAM=ABCDE12345` instead.
+
+## Development commands
+
+```bash
+scripts/build.sh            # Debug build → build/DerivedData/Build/Products/Debug/LocalFlow.app
+scripts/build.sh test       # unit tests
+scripts/build.sh release    # Release build (ad-hoc, or your team if Signing.local.xcconfig exists)
+scripts/build.sh project    # just generate LocalFlow.xcodeproj, then: open LocalFlow.xcodeproj
+scripts/build.sh lock       # update pinned Swift package versions (Config/Package.resolved)
+scripts/build.sh clean      # delete build/ and the generated project
+```
+
+`LocalFlow.xcodeproj` is generated from `project.yml` by XcodeGen, so edit `project.yml`,
+not the project. `Config/Package.resolved` pins WhisperKit's transitive dependencies. If
+it's missing, the first build creates it, and you should commit it.
+
+Debug logs: `log stream --predicate 'subsystem == "com.kkeefer.LocalFlow"' --level debug`
+
+CI (`.github/workflows/ci.yml`) runs the tests and a Release build on every push and pull
+request. Pushes to `main` also upload an **unsigned** test zip as a workflow artifact. That
+zip isn't notarized, Gatekeeper blocks it on other Macs, and it isn't a release.
+
+## Release process
+
+Push a version tag such as `v0.2.0` after bumping `MARKETING_VERSION` in `project.yml`.
+`.github/workflows/release.yml` then does the rest:
+
+1. Builds the app and signs it with Developer ID.
+2. Notarizes it and staples the ticket.
+3. Verifies the result.
+4. Attaches `LocalFlow-0.2.0.zip` and its `.sha256` to a draft GitHub Release.
+
+This needs an Apple Developer Program membership and six repository secrets. See
+**[docs/RELEASING.md](docs/RELEASING.md)**.
+
+## Upgrading
+
+Quit LocalFlow (menu → **Quit**), drag the new `LocalFlow.app` into Applications, and choose
+**Replace**. Settings, your vocabulary, and downloaded models live outside the app, so they
+are kept. Permissions carry over between releases signed by the same team.
+
+If you switch from a self-built copy to a release (or the other way), macOS sees a
+different signature, so you'll need to grant permissions once more. First remove the old
+LocalFlow entries with **–** in each Privacy & Security list.
+
+## Uninstalling
+
+1. Quit LocalFlow and delete `/Applications/LocalFlow.app`.
+2. Optional — delete settings and the downloaded speech model (~3 GB):
+   ```bash
+   rm -rf ~/Library/Application\ Support/LocalFlow
+   ```
+3. Optional — remove LocalFlow's permission entries:
+   `tccutil reset All com.kkeefer.LocalFlow`
+4. Optional — remove the cleanup model with `ollama rm qwen2.5:7b`. To remove Ollama
+   itself, follow Ollama's own instructions.
+
+Source builds from before the setup window existed stored the speech model in
+`~/Documents/huggingface/models/argmaxinc/whisperkit-coreml`. Current builds don't look
+there, so they download the model once more; afterwards you can delete that folder.
+
+Nothing is deleted automatically — not on upgrade, and not on uninstall.
 
 ## Troubleshooting
-- **Build fails with "Entitlements file was modified during the build"**: stale incremental-build state after running `xcodegen generate`. Fix: `xcodebuild -project LocalFlow.xcodeproj -scheme LocalFlow clean`, then rebuild.
 
-- **Accessibility/Input Monitoring permission disappears after every rebuild.** Cause:
-  the app is ad-hoc signed (no `DEVELOPMENT_TEAM` configured), so macOS sees each rebuild as
-  a different, untrusted binary and drops the grant. Fix: complete the code-signing setup
-  in step 4 above, then re-grant permissions one final time — they'll persist across
-  rebuilds after that.
-- **Menu bar status shows "Ollama not running (ollama serve)".** The health check couldn't
-  reach `localhost:11434`. Run `brew services start ollama` (or `ollama serve` in a
-  terminal) and confirm `ollama pull qwen2.5:7b` completed. Dictation still works and falls
-  back to the raw, uncleaned transcript while Ollama is unreachable.
-- **First run is slow / a large download happens.** WhisperKit downloads its speech model
-  (~3 GB) on first launch. This is one-time and cached locally; subsequent launches are
-  fast and fully offline.
-- **Dictionary edits don't seem to take effect.** Custom dictionary entries are loaded when
-  the transcription/cleanup pipeline is set up at launch. Restart LocalFlow after editing
-  the dictionary for changes to apply.
+- **Hotkeys do nothing.** Open **Setup…**. If *Input Monitoring* isn't green, turn
+  LocalFlow on in System Settings → Privacy & Security → Input Monitoring, then click
+  **Relaunch**. macOS often needs a restart before the app sees that permission.
+- **Status says "Grant Accessibility (paste blocked)".** Your text is in the menu's
+  history. Turn on Accessibility for LocalFlow, and the next dictation will paste.
+- **Permissions vanish after every rebuild (source builds).** The build is ad-hoc signed.
+  Set up an Apple Development certificate (see [Code signing](#code-signing-for-development)),
+  then grant permissions one last time.
+- **"Ollama not running (cleanup off)".** Start the Ollama app, or run
+  `brew services start ollama` for a Homebrew install. Dictation still works without it
+  and pastes the raw transcript.
+- **"Cleanup skipped (…)" under the status.** Ollama returned an error, often because the
+  model is still loading or the Mac is short on memory. The raw transcript was pasted.
+  Check it with `ollama run qwen2.5:7b "hi"`.
+- **Speech model download failed or was interrupted.** Click **Retry** in Setup. Downloads
+  resume from where they stopped, and an already-downloaded model is reloaded from disk
+  (no network needed). If loading keeps failing, the files may be damaged: click
+  **Re-download** to delete and fetch them again (~3 GB).
+- **"Preparing speech model…" takes a long time on first launch.** macOS is compiling the
+  model for your Mac's Neural Engine. This happens once.
+- **Build fails with "Entitlements file was modified during the build".** Run
+  `scripts/build.sh clean && scripts/build.sh`.
+- **Dictionary edits don't take effect.** Vocabulary is read at launch, so restart
+  LocalFlow after editing it.
 
 ## Known limitations
 
-- **No voice-activity detection (VAD).** The spec called for Silero VAD to detect and trim
-  silence before transcription; v1 ships without it. Every captured buffer — including pure
-  silence — is handed to WhisperKit as-is, and Whisper-family models can hallucinate a short
-  phrase (e.g. "Thank you.") from silence, which LocalFlow will then paste at the cursor.
-  Workaround: avoid triggering a dictation with nothing to say (hold the hotkey only when
-  you're about to speak), and if a stray phrase gets pasted, undo it (Cmd+Z).
-- **Holding the other same-side modifier can suppress release detection.** For example,
-  holding Left Shift while tapping Right Shift can prevent the hotkey manager from seeing
-  the release event for Right Shift, leaving LocalFlow stuck in "Listening…". If recording
-  seems stuck, release all modifier keys (and re-tap the dictation/command hotkey once) to
-  reset it.
-- **First dictation blocks on a one-time ~3 GB model download.** WhisperKit downloads its
-  speech model on first launch; until that completes, the first dictation attempt will be
-  slow or unresponsive. This is one-time and cached locally — see the Troubleshooting note
-  above.
+- **No voice-activity detection.** Silence is sent to Whisper as-is, and Whisper can
+  invent a short phrase (for example "Thank you.") from it. Hold the hotkey only while
+  speaking, and press Cmd+Z if a stray phrase gets pasted.
+- **Holding the other same-side modifier can hide a hotkey release.** For example, holding
+  Left Shift while tapping Right Shift. If recording seems stuck, release every modifier
+  key and tap the hotkey once.
+- **Pasting borrows the clipboard.** Text is pasted with a synthetic Cmd+V. Plain-text
+  clipboard contents are restored afterwards, but non-text items (such as images) are lost.
+- **The default speech model is large and accurate.** Whisper large-v3 is the most
+  accurate choice and is fast on Apple Silicon, but it needs ~3 GB of disk and memory. To
+  trade accuracy for speed and size, set `"sttModel"` in
+  `~/Library/Application Support/LocalFlow/settings.json` to another WhisperKit variant
+  (for example `"small.en"`; not tested by the maintainers), then relaunch.
+- **Revoking Input Monitoring while LocalFlow runs isn't detected.** The Setup row stays
+  green until the next launch.
+- **No auto-update.** Download new versions from Releases (see [Upgrading](#upgrading)).

@@ -1,0 +1,21 @@
+// Project-level build settings shared by the app AND the test bundle (they must share one
+// signing team, or the signed app refuses to load the test bundle: "different Team IDs").
+//
+// Default: ad-hoc signing ("Sign to Run Locally"). Builds on any Mac with no Apple account,
+// but macOS treats every rebuild as a new binary, so Accessibility / Input Monitoring grants
+// must be re-approved after each rebuild.
+//
+// For grants that survive rebuilds, sign with your own Apple Development certificate by
+// creating the git-ignored file Config/Signing.local.xcconfig (scripts/setup-macos.sh does
+// this for you when it finds a certificate):
+//
+//     DEVELOPMENT_TEAM = ABCDE12345
+//     CODE_SIGN_IDENTITY = Apple Development
+//
+// Release builds override these on the xcodebuild command line (see scripts/release.sh).
+
+CODE_SIGN_STYLE = Automatic
+CODE_SIGN_IDENTITY = -
+DEVELOPMENT_TEAM =
+
+#include? "Signing.local.xcconfig"

@@ -1,5 +1,6 @@
 .DS_Store
 build/
+dist/
 DerivedData/
 *.xcuserstate
 xcuserdata/
@@ -8,3 +9,13 @@ xcuserdata/
 *.xcodeproj
 .build/
 .serena/
+
+# Per-developer signing (see Config/LocalFlow.xcconfig)
+Config/Signing.local.xcconfig
+
+# Never commit signing material or Apple credentials
+*.p12
+*.p8
+*.cer
+*.mobileprovision
+*.provisionprofile
