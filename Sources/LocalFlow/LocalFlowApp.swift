@@ -34,6 +34,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, Obse
     /// Re-checks permissions every couple of seconds while the setup window is open, so
     /// rows tick green as soon as the user flips a switch in System Settings.
     private var recheckTimer: Timer?
+    /// Health refreshes overlap (timer, menu open, Check Again) and the Ollama probe can take
+    /// up to 1.5 s, so only the most recently started refresh may publish its result.
+    private var healthGeneration = 0
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let state = self.state
@@ -98,7 +101,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, Obse
         // Tap creation is the real Input Monitoring test; retrying picks up a fresh grant
         // when macOS allows it without a relaunch.
         state.setup.hotkeysActive = hotkeys.start()
-        state.setup.ollama = await HealthCheck.ollamaStatus(model: settings.settings.llmModel)
+        healthGeneration += 1
+        let generation = healthGeneration
+        let ollama = await HealthCheck.ollamaStatus(model: settings.settings.llmModel)
+        guard generation == healthGeneration else { return } // a newer refresh owns the result
+        state.setup.ollama = ollama
         state.applySetupStatus()
     }
 
@@ -142,19 +149,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, Obse
     private func setupActions() -> SetupActions {
         SetupActions(
             request: { permission in permission.request() },
-            relaunch: {
+            relaunch: { [weak self] in
                 let config = NSWorkspace.OpenConfiguration()
                 config.createsNewApplicationInstance = true
-                NSWorkspace.shared.openApplication(at: Bundle.main.bundleURL, configuration: config) { _, _ in
-                    Task { @MainActor in NSApp.terminate(nil) }
+                NSWorkspace.shared.openApplication(at: Bundle.main.bundleURL, configuration: config) { _, error in
+                    let message = error?.localizedDescription
+                    Task { @MainActor in
+                        // Only quit once the new instance is actually launching.
+                        if let message {
+                            self?.state.notice = "Couldn't relaunch (\(message)). Quit and reopen LocalFlow."
+                        } else {
+                            NSApp.terminate(nil)
+                        }
+                    }
                 }
             },
             downloadSpeechModel: { [weak self] in
                 guard let transcriber = self?.transcriber else { return }
-                Task {
-                    await transcriber.resetAfterFailure()
-                    _ = try? await transcriber.prepare(allowDownload: true)
-                }
+                Task { await transcriber.retry() }
+            },
+            redownloadSpeechModel: { [weak self] in
+                guard let transcriber = self?.transcriber else { return }
+                Task { await transcriber.redownload() }
             },
             openOllamaDownloadPage: {
                 NSWorkspace.shared.open(URL(string: "https://ollama.com/download")!)

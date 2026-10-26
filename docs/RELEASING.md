@@ -5,9 +5,11 @@ The pipeline is `.github/workflows/release.yml`, which runs `scripts/release.sh`
 run the same script locally.
 
 > **Status:** the signed and notarized path has not been run end to end yet, because it
-> needs Apple Developer Program credentials. The unsigned path (`--unsigned`) and every
-> check before signing have been exercised. Do the first release as a dry run:
-> push a `v0.1.0-rc.1` tag, then review the draft release before publishing.
+> needs Apple Developer Program credentials. Only the unsigned path (`--unsigned`) has
+> run. It covers archiving, the bundle ID / version / entitlement checks, and packaging,
+> but not the Developer ID export (`ExportOptions.plist`) or the signed-only checks
+> (hardened runtime, team, `get-task-allow`). Do the first release as a dry run: push a
+> `v0.1.0-rc.1` tag, then review the draft release before publishing.
 
 ## 1. One-time Apple setup
 
@@ -106,7 +108,7 @@ Review the draft on GitHub, then click **Publish release**.
 ### Dry run locally
 
 ```bash
-scripts/release.sh 0.2.0 --unsigned        # no credentials: checks archive/export/packaging only
+scripts/release.sh 0.2.0 --unsigned        # no credentials: archive + packaging only (no Developer ID export)
 ```
 
 To produce a signed, notarized build from your own Mac, first store notarization

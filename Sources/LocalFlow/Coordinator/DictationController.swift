@@ -78,7 +78,12 @@ final class DictationController {
             // Recording now would only end in an error after the user finished speaking.
             state.status = "Speech model not ready — open Setup"
             return
-        default:
+        case .downloading, .loading:
+            // Transcription would wait for the whole download/compile, then paste into
+            // whatever app happens to be frontmost minutes later.
+            state.status = "Speech model still preparing — try again shortly"
+            return
+        case .unknown, .ready:
             break
         }
         capturedTone = contextProvider.toneLabel(forBundleID: ContextProvider.frontmostBundleID())

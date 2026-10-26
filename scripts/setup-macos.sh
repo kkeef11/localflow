@@ -14,8 +14,8 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 MIN_MACOS="14.0"        # project.yml deploymentTarget
-MIN_XCODE="16.0"        # Swift 6 toolchain
-PINNED_XCODEGEN="2.46.0" # what CI uses (.github/workflows/ci.yml)
+MIN_XCODE="26.0"        # Swift 6.2: the pinned swift-collections/swift-crypto need tools 6.1+
+PINNED_XCODEGEN="2.46.0" # what CI uses (.github/actions/setup-tools/action.yml)
 DEFAULT_LLM_MODEL="qwen2.5:7b"
 DEFAULT_STT_MODEL="large-v3"
 SETTINGS_JSON="$HOME/Library/Application Support/LocalFlow/settings.json"
@@ -100,7 +100,7 @@ elif ! xcode_version="$(xcodebuild -version 2>/dev/null | awk 'NR==1{print $2}')
     fail "xcodebuild did not run. The Xcode license may need accepting."
     hint "Run: sudo xcodebuild -license accept"
 elif ! version_ge "$xcode_version" "$MIN_XCODE"; then
-    fail "Xcode $xcode_version is older than the required $MIN_XCODE (Swift 6)."
+    fail "Xcode $xcode_version is older than the required $MIN_XCODE (Swift 6.2, needed by the pinned packages)."
 else
     ok "Xcode $xcode_version ($dev_dir)"
     XCODE_OK=1
@@ -120,6 +120,9 @@ elif [[ -x /usr/local/bin/brew ]]; then BREW=/usr/local/bin/brew
 fi
 if [[ -n "$BREW" ]]; then
     ok "Homebrew ($BREW)"
+    # Homebrew may be installed but not on PATH yet (shell profile not set up); make the
+    # tools it installs visible to the rest of this script and to scripts/build.sh.
+    PATH="$(dirname "$BREW"):$PATH"; export PATH
 else
     warn "Homebrew not found — needed only to install xcodegen (and optionally ollama) below."
     hint "Install from https://brew.sh, or install xcodegen manually: https://github.com/yonaskolb/XcodeGen/releases"
@@ -144,6 +147,8 @@ if command -v xcodegen >/dev/null 2>&1; then
     xg_version="$(xcodegen --version 2>/dev/null | awk '{print $NF}')"
     ok "XcodeGen $xg_version"
     [[ "$xg_version" == "$PINNED_XCODEGEN" ]] || hint "(CI uses $PINNED_XCODEGEN; other versions usually work but aren't what releases are built with.)"
+elif [[ "$FAILURES" -eq 0 ]]; then
+    fail "XcodeGen is still not on PATH. Add Homebrew to your shell: eval \"\$($BREW shellenv)\""
 fi
 
 # ---------------------------------------------------------------------------------------
@@ -190,7 +195,7 @@ STT_MODEL="$(setting sttModel "$DEFAULT_STT_MODEL")"
 if ls -d "$HOME/Library/Application Support/LocalFlow/Models/models/argmaxinc/whisperkit-coreml/"*"$STT_MODEL" >/dev/null 2>&1; then
     ok "Whisper $STT_MODEL is cached for LocalFlow"
 else
-    ok "Whisper $STT_MODEL will be downloaded by LocalFlow on first launch (~3 GB, one time, with progress in the menu)."
+    ok "Whisper $STT_MODEL is not downloaded yet: click Download in LocalFlow's Setup window (~3 GB, one time)."
 fi
 
 # ---------------------------------------------------------------------------------------

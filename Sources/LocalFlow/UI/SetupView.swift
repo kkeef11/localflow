@@ -6,6 +6,7 @@ struct SetupActions {
     var request: (Permission) -> Void = { _ in }
     var relaunch: () -> Void = {}
     var downloadSpeechModel: () -> Void = {}
+    var redownloadSpeechModel: () -> Void = {}
     var openOllamaDownloadPage: () -> Void = {}
     var startOllama: () -> Void = {}
     var pullOllamaModel: () -> Void = {}
@@ -76,7 +77,11 @@ struct SetupView: View {
             }
         case .failed(let message):
             row(done: false, title: "Speech model", why: "Couldn't load: \(message)") {
-                Button("Retry") { actions.downloadSpeechModel() }
+                VStack(alignment: .trailing) {
+                    Button("Retry") { actions.downloadSpeechModel() }
+                    Button("Re-download") { actions.redownloadSpeechModel() }
+                        .help("Delete the downloaded speech model and download it again (~3 GB)")
+                }
             }
         }
     }

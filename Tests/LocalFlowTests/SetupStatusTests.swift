@@ -106,6 +106,13 @@ final class OllamaPullTests: XCTestCase {
     }
 }
 
+private final class StateLog: @unchecked Sendable {
+    private let lock = NSLock()
+    private var states: [SpeechModelState] = []
+    func append(_ state: SpeechModelState) { lock.lock(); states.append(state); lock.unlock() }
+    var last: SpeechModelState? { lock.lock(); defer { lock.unlock() }; return states.last }
+}
+
 final class WhisperModelCacheTests: XCTestCase {
     private func tempDir() throws -> URL {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent("lf-models-\(UUID())")
@@ -131,6 +138,22 @@ final class WhisperModelCacheTests: XCTestCase {
         let base = try tempDir()
         try "/nonexistent/lf-model".write(to: base.appendingPathComponent("large-v3.ready"), atomically: true, encoding: .utf8)
         XCTAssertNil(WhisperKitTranscriber.completedModelFolder(model: "large-v3", in: base))
+    }
+
+    func test_retry_after_failed_cached_load_keeps_the_download() async throws {
+        // A cached load can fail transiently (memory pressure, offline). Retry must not
+        // throw away the marker, or the files become unusable without a network.
+        let base = try tempDir()
+        let folder = base.appendingPathComponent("models/argmaxinc/whisperkit-coreml/openai_whisper-large-v3")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let marker = base.appendingPathComponent("large-v3.ready")
+        try folder.path.write(to: marker, atomically: true, encoding: .utf8)
+        let states = StateLog()
+        let transcriber = WhisperKitTranscriber(model: "large-v3", modelsDirectory: base,
+                                                onState: { states.append($0) })
+        await transcriber.retry() // empty folder: the load fails, without touching the network
+        XCTAssertTrue(FileManager.default.fileExists(atPath: marker.path))
+        guard case .failed = states.last else { return XCTFail("expected .failed, got \(String(describing: states.last))") }
     }
 
     func test_transcribe_without_download_fails_fast_without_network() async throws {

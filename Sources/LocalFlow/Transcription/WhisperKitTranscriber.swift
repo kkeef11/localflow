@@ -80,11 +80,22 @@ actor WhisperKitTranscriber: Transcribing {
         }
     }
 
-    /// Forgets the completed-download marker so the next `prepare` re-verifies the files
-    /// against the server (re-downloading anything missing or changed). Used by "Retry".
-    func resetAfterFailure() {
-        guard pipe == nil else { return }
+    /// "Retry": loads from disk again when a completed download exists (works offline, keeps
+    /// the files), otherwise resumes the download.
+    func retry() async {
+        _ = try? await prepare(allowDownload: true)
+    }
+
+    /// "Re-download": deletes this model's files and downloads them again. The Hub client
+    /// skips files that already exist, so this is the only repair for corrupted files.
+    /// Only ever run from an explicit user click.
+    func redownload() async {
+        guard pipe == nil, loading == nil else { return }
+        if let folder = Self.completedModelFolder(model: model, in: modelsDirectory) {
+            try? FileManager.default.removeItem(at: folder)
+        }
         try? FileManager.default.removeItem(at: Self.markerURL(model: model, in: modelsDirectory))
+        _ = try? await prepare(allowDownload: true)
     }
 
     func transcribe(samples: [Float]) async throws -> String {

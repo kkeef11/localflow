@@ -146,6 +146,21 @@ final class DictationControllerTests: XCTestCase {
         XCTAssertNil(injector.injectedText)
     }
 
+    func test_speech_model_still_downloading_or_loading_blocks_recording() async throws {
+        for model in [SpeechModelState.downloading(fraction: 0.3), .loading] {
+            let state = AppState(); let injector = FakeInjector()
+            state.setup.speechModel = model
+            let recorder = FakeRecorder()
+            let controller = makeController(transcript: "raw", cleanup: nil, state: state,
+                                            injector: injector, recorder: recorder)
+            controller.dictationHotkey(pressed: true)
+            controller.dictationHotkey(pressed: false)
+            XCTAssertFalse(recorder.started, "\(model): would paste into a random app minutes later")
+            XCTAssertEqual(state.status, "Speech model still preparing — try again shortly")
+            XCTAssertNil(injector.injectedText)
+        }
+    }
+
     func test_recorder_start_failure_reports_error_and_resets() async throws {
         let state = AppState(); let injector = FakeInjector(); let spy = SpyIndicator()
         let recorder = FakeRecorder()

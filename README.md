@@ -30,7 +30,9 @@ The only network use is the one-time model downloads.
 1. Download `LocalFlow-<version>.zip` from
    [Releases](https://github.com/kkeef11/localflow/releases). If you want to check the
    download, also get the `.sha256` file and run
-   `shasum -a 256 -c LocalFlow-<version>.zip.sha256`.
+   `shasum -a 256 -c LocalFlow-<version>.zip.sha256`. Safari unzips downloads and deletes
+   the zip by default; to check it, download with another browser or turn off
+   Safari → Settings → General → "Open 'safe' files after downloading".
 2. Double-click the zip, then drag **LocalFlow.app** into **Applications**.
 3. Open LocalFlow from Applications. macOS asks to confirm an app downloaded from the
    internet; click **Open**. Release builds are notarized by Apple.
@@ -58,13 +60,16 @@ What happens if a step is skipped:
   silence.
 - **Accessibility off:** your transcript is kept in the menu's history instead of pasted.
 - **Ollama missing:** dictation still works and pastes the raw transcript.
+- **Dictation waits for the speech model.** Until it has finished downloading and
+  preparing, the hotkeys show a status message instead of recording.
 - **Nothing downloads without a click.** The first time the speech model loads, it is also
   optimized for your Mac, which can take several minutes. Later launches are quick and
   fully offline.
 
 ## Installation — build from source
 
-Needs Xcode 16 or later (Swift 6). The CI and release builds use Xcode 26.6.
+Needs Xcode 26 or later (Swift 6.2, required by the pinned Swift packages). The CI and
+release builds use Xcode 26.6.
 
 ```bash
 git clone https://github.com/kkeef11/localflow.git
@@ -102,7 +107,7 @@ There's nothing to edit in tracked files.
 ```bash
 scripts/build.sh            # Debug build → build/DerivedData/Build/Products/Debug/LocalFlow.app
 scripts/build.sh test       # unit tests
-scripts/build.sh release    # Release build (dev-signed)
+scripts/build.sh release    # Release build (ad-hoc, or your team if Signing.local.xcconfig exists)
 scripts/build.sh project    # just generate LocalFlow.xcodeproj, then: open LocalFlow.xcodeproj
 scripts/build.sh lock       # update pinned Swift package versions (Config/Package.resolved)
 scripts/build.sh clean      # delete build/ and the generated project
@@ -153,8 +158,9 @@ LocalFlow entries with **–** in each Privacy & Security list.
 4. Optional — remove the cleanup model with `ollama rm qwen2.5:7b`. To remove Ollama
    itself, follow Ollama's own instructions.
 
-Development builds made before the setup window existed stored the speech model in
-`~/Documents/huggingface/models/argmaxinc/whisperkit-coreml`. You can delete that folder.
+Source builds from before the setup window existed stored the speech model in
+`~/Documents/huggingface/models/argmaxinc/whisperkit-coreml`. Current builds don't look
+there, so they download the model once more; afterwards you can delete that folder.
 
 Nothing is deleted automatically — not on upgrade, and not on uninstall.
 
@@ -175,8 +181,9 @@ Nothing is deleted automatically — not on upgrade, and not on uninstall.
   model is still loading or the Mac is short on memory. The raw transcript was pasted.
   Check it with `ollama run qwen2.5:7b "hi"`.
 - **Speech model download failed or was interrupted.** Click **Retry** in Setup. Downloads
-  resume from where they stopped. If it keeps failing, quit LocalFlow, delete
-  `~/Library/Application Support/LocalFlow/Models`, and try again.
+  resume from where they stopped, and an already-downloaded model is reloaded from disk
+  (no network needed). If loading keeps failing, the files may be damaged: click
+  **Re-download** to delete and fetch them again (~3 GB).
 - **"Preparing speech model…" takes a long time on first launch.** macOS is compiling the
   model for your Mac's Neural Engine. This happens once.
 - **Build fails with "Entitlements file was modified during the build".** Run
@@ -199,4 +206,6 @@ Nothing is deleted automatically — not on upgrade, and not on uninstall.
   trade accuracy for speed and size, set `"sttModel"` in
   `~/Library/Application Support/LocalFlow/settings.json` to another WhisperKit variant
   (for example `"small.en"`; not tested by the maintainers), then relaunch.
+- **Revoking Input Monitoring while LocalFlow runs isn't detected.** The Setup row stays
+  green until the next launch.
 - **No auto-update.** Download new versions from Releases (see [Upgrading](#upgrading)).

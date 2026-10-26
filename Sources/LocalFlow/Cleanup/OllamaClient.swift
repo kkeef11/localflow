@@ -67,7 +67,12 @@ final class OllamaClient: LLMGenerating {
         req.httpBody = try JSONSerialization.data(withJSONObject: ["model": model, "stream": true])
         let (bytes, response) = try await session.bytes(for: req)
         if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
-            throw OllamaError.badStatus(code: http.statusCode, body: "pull of \(model) failed")
+            // Ollama explains failures as {"error": "..."} (unknown model, disk full, ...).
+            var body = "pull of \(model) failed"
+            if let line = try? await bytes.lines.first(where: { _ in true }) {
+                body = (try? JSONDecoder().decode(PullEvent.self, from: Data(line.utf8)).error) ?? line
+            }
+            throw OllamaError.badStatus(code: http.statusCode, body: body)
         }
         for try await line in bytes.lines {
             onProgress(try Self.parsePullLine(line).fraction)
