@@ -39,7 +39,7 @@ permissions granted, and a run of the workflow on GitHub.
 3. **Add the two secrets** (the script prints these commands with your paths):
    ```bash
    gh secret set SELF_SIGNED_P12_BASE64 < <(base64 -i ~/LocalFlow-signing/LocalFlow-Self-Signed.p12)
-   gh secret set SELF_SIGNED_P12_PASSWORD < ~/LocalFlow-signing/p12-password.txt
+   tr -d '\n' < ~/LocalFlow-signing/p12-password.txt | gh secret set SELF_SIGNED_P12_PASSWORD
    ```
 4. **Tag a release** as in section 4. The draft release includes install instructions for
    users (`.github/release-notes-self-signed.md`), above the generated changelog.
