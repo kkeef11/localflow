@@ -1,3 +1,4 @@
+import AVFoundation
 import SwiftUI
 
 @main
@@ -6,7 +7,8 @@ struct LocalFlowApp: App {
 
     var body: some Scene {
         MenuBarExtra("LocalFlow", systemImage: "mic.fill") {
-            MenuBarView(state: delegate.state, onDictionarySave: delegate.saveDictionary)
+            MenuBarView(state: delegate.state, onDictionarySave: delegate.saveDictionary,
+                        onShowSetup: delegate.showSetup)
                 .onAppear { delegate.refreshHealth() } // re-check every time the menu opens
         }
         .menuBarExtraStyle(.window)
@@ -18,7 +20,7 @@ struct LocalFlowApp: App {
 /// menu content's `.onAppear`, which for a `MenuBarExtra` only fires when the menu is
 /// first opened — leaving hotkeys dead until the user happened to click the icon.
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, ObservableObject {
     let state = AppState()
     private let hotkeys = HotkeyManager()
     private let recorder = AudioRecorder()
@@ -26,10 +28,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     private let settings = SettingsStore()
     /// Retained here: the hotkey closures capture it, but an explicit owner is clearer.
     private var controller: DictationController?
+    private var transcriber: WhisperKitTranscriber?
+    private var llm: OllamaClient?
+    private var setupWindow: NSWindow?
+    /// Re-checks permissions every couple of seconds while the setup window is open, so
+    /// rows tick green as soon as the user flips a switch in System Settings.
+    private var recheckTimer: Timer?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        let transcriber = WhisperKitTranscriber(model: settings.settings.sttModel,
-                                                promptTerms: settings.settings.dictionary)
+        let state = self.state
+        let sttModel = settings.settings.sttModel
+        let transcriber = WhisperKitTranscriber(model: sttModel, promptTerms: settings.settings.dictionary,
+                                                onState: { model in
+            Task { @MainActor in
+                state.setup.speechModel = model
+                state.applySetupStatus()
+            }
+        })
         let llm = OllamaClient(model: settings.settings.llmModel)
         let cleanup = CleanupService(llm: llm, dictionary: settings.settings.dictionary)
         let contextProvider = ContextProvider(modes: settings.settings.contextModes)
@@ -40,33 +55,51 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
                                              contextProvider: contextProvider, router: router, llm: llm,
                                              indicator: indicator)
         self.controller = controller
+        self.transcriber = transcriber
+        self.llm = llm
         hotkeys.onDictation = { pressed in Task { @MainActor in controller.dictationHotkey(pressed: pressed) } }
         hotkeys.onCommand = { pressed in Task { @MainActor in controller.commandHotkey(pressed: pressed) } }
-        hotkeys.start()
         state.dictionaryText = settings.settings.dictionary.joined(separator: ", ")
+        state.setup.ollamaModel = settings.settings.llmModel
 
-        refreshHealth()
-    }
+        // Speech model: load it now if a previous download completed (fully offline);
+        // otherwise wait for the user to start the ~3 GB download from the setup window.
+        if WhisperKitTranscriber.completedModelFolder(
+            model: sttModel, in: WhisperKitTranscriber.defaultModelsDirectory) == nil {
+            state.setup.speechModel = .notDownloaded
+        }
+        Task { await transcriber.loadIfDownloaded() }
 
-    /// Best-effort readiness probe: surfaces a warning status if Accessibility isn't
-    /// granted (injection won't land) or Ollama isn't reachable (cleanup will be skipped).
-    /// Runs at launch and again on every menu open, so the status reflects the CURRENT
-    /// permission state — not a stale launch-time snapshot. Only overwrites Idle/warning
-    /// statuses; never stomps an in-flight "Listening…"/"Transcribing…"/"Cleaning…".
-    func refreshHealth() {
-        Task { @MainActor in
-            let overwritable = state.status == "Idle"
-                || state.status.hasPrefix("Grant")
-                || state.status.hasPrefix("Ollama")
-            guard overwritable else { return }
-            if !HealthCheck.accessibilityGranted() {
-                state.status = "Grant Accessibility & Input Monitoring"
-            } else if !(await HealthCheck.ollamaReachable()) {
-                state.status = "Ollama not running (ollama serve)"
-            } else {
-                state.status = "Idle"
+        // The microphone prompt is one-time by design; ask up front rather than mid-dictation.
+        if HealthCheck.microphonePermission() == .notDetermined {
+            AVCaptureDevice.requestAccess(for: .audio) { [weak self] _ in
+                Task { @MainActor in self?.refreshHealth() }
             }
         }
+
+        Task {
+            await refreshHealthNow() // also creates the hotkey event tap
+            if state.setup.requiredItemsMissing { showSetup() }
+        }
+    }
+
+    /// Best-effort readiness probe: updates the setup checklist and surfaces the most
+    /// important missing item in the status line. Runs at launch, on every menu open, and
+    /// periodically while the setup window is open, so it reflects the CURRENT permission
+    /// state — not a stale launch-time snapshot. Never stomps an in-flight
+    /// "Listening…"/"Transcribing…"/"Cleaning…" (see `AppState.applySetupStatus`).
+    func refreshHealth() {
+        Task { await refreshHealthNow() }
+    }
+
+    private func refreshHealthNow() async {
+        state.setup.microphone = HealthCheck.microphonePermission()
+        state.setup.accessibility = HealthCheck.accessibilityGranted()
+        // Tap creation is the real Input Monitoring test; retrying picks up a fresh grant
+        // when macOS allows it without a relaunch.
+        state.setup.hotkeysActive = hotkeys.start()
+        state.setup.ollama = await HealthCheck.ollamaStatus(model: settings.settings.llmModel)
+        state.applySetupStatus()
     }
 
     /// Parses the comma-separated dictionary field and persists it to `SettingsStore`.
@@ -78,5 +111,85 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
             .split(separator: ",")
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
+    }
+
+    // MARK: - Setup window
+
+    func showSetup() {
+        if setupWindow == nil {
+            let window = NSWindow(contentViewController: NSHostingController(
+                rootView: SetupView(state: state, actions: setupActions())))
+            window.title = "LocalFlow Setup"
+            window.styleMask = [.titled, .closable]
+            window.isReleasedWhenClosed = false
+            window.delegate = self
+            window.center()
+            setupWindow = window
+        }
+        NSApp.activate() // menu-bar-only app: bring the window in front of other apps
+        setupWindow?.makeKeyAndOrderFront(nil)
+        recheckTimer?.invalidate()
+        recheckTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.refreshHealth() }
+        }
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        recheckTimer?.invalidate()
+        recheckTimer = nil
+    }
+
+    private func setupActions() -> SetupActions {
+        SetupActions(
+            request: { permission in permission.request() },
+            relaunch: {
+                let config = NSWorkspace.OpenConfiguration()
+                config.createsNewApplicationInstance = true
+                NSWorkspace.shared.openApplication(at: Bundle.main.bundleURL, configuration: config) { _, _ in
+                    Task { @MainActor in NSApp.terminate(nil) }
+                }
+            },
+            downloadSpeechModel: { [weak self] in
+                guard let transcriber = self?.transcriber else { return }
+                Task {
+                    await transcriber.resetAfterFailure()
+                    _ = try? await transcriber.prepare(allowDownload: true)
+                }
+            },
+            openOllamaDownloadPage: {
+                NSWorkspace.shared.open(URL(string: "https://ollama.com/download")!)
+            },
+            startOllama: { [weak self] in
+                if let app = HealthCheck.ollamaAppURL() {
+                    NSWorkspace.shared.openApplication(at: app, configuration: .init())
+                } else {
+                    // Homebrew/CLI install: starting a background service is the user's call.
+                    self?.state.notice = "Start Ollama in Terminal: brew services start ollama (or ollama serve)"
+                }
+            },
+            pullOllamaModel: { [weak self] in self?.pullOllamaModel() },
+            recheck: { [weak self] in self?.refreshHealth() }
+        )
+    }
+
+    private func pullOllamaModel() {
+        guard state.setup.ollamaPull == nil, let llm else { return }
+        let state = self.state
+        state.setup.ollamaPull = 0
+        Task {
+            do {
+                try await llm.pull { fraction in
+                    Task { @MainActor in
+                        // Ignore progress that arrives after the pull already finished.
+                        if let fraction, state.setup.ollamaPull != nil { state.setup.ollamaPull = fraction }
+                    }
+                }
+                state.notice = nil
+            } catch {
+                state.notice = "Model download failed: \(error.localizedDescription)"
+            }
+            state.setup.ollamaPull = nil
+            await refreshHealthNow()
+        }
     }
 }

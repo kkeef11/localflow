@@ -22,7 +22,12 @@ final class HotkeyManager {
     var onCommand: (Bool) -> Void = { _ in }
     private var tap: CFMachPort?
 
-    func start() {
+    /// Creates the event tap if it doesn't exist yet. Returns whether hotkeys are live.
+    /// Safe to call repeatedly: the health check retries it after the user grants Input
+    /// Monitoring, since tap creation fails (returns nil) until then.
+    @discardableResult
+    func start() -> Bool {
+        if tap != nil { return true }
         let mask: CGEventMask = 1 << CGEventType.flagsChanged.rawValue
         let callback: CGEventTapCallBack = { _, type, event, userInfo in
             let mgr = Unmanaged<HotkeyManager>.fromOpaque(userInfo!).takeUnretainedValue()
@@ -48,11 +53,12 @@ final class HotkeyManager {
                                 userInfo: Unmanaged.passUnretained(self).toOpaque())
         guard let tap else {
             Self.log.error("event tap creation FAILED — Input Monitoring/Accessibility not effective")
-            return
+            return false
         }
         let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
         CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
         CGEvent.tapEnable(tap: tap, enable: true)
         Self.log.debug("event tap created and enabled")
+        return true
     }
 }

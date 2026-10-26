@@ -1,0 +1,25 @@
+name: Set up LocalFlow build tools
+description: Selects the pinned Xcode and installs the pinned, checksum-verified XcodeGen.
+runs:
+  using: composite
+  steps:
+    - name: Select Xcode
+      shell: bash
+      run: |
+        # Pinned toolchain. Bump deliberately (and XCODEGEN_* below); see docs/RELEASING.md.
+        sudo xcode-select -s /Applications/Xcode_26.6.app
+        xcodebuild -version
+    - name: Install XcodeGen
+      shell: bash
+      env:
+        XCODEGEN_VERSION: "2.46.0"
+        XCODEGEN_SHA256: 4d9e34b62172d645eed6457cac13fc222569974098ef4ee9c3368bedf0196806
+      run: |
+        curl -fsSL -o "$RUNNER_TEMP/xcodegen.zip" \
+          "https://github.com/yonaskolb/XcodeGen/releases/download/$XCODEGEN_VERSION/xcodegen.zip"
+        echo "$XCODEGEN_SHA256  $RUNNER_TEMP/xcodegen.zip" | shasum -a 256 -c -
+        unzip -q "$RUNNER_TEMP/xcodegen.zip" -d "$RUNNER_TEMP/xcodegen"
+        bin="$(find "$RUNNER_TEMP/xcodegen" -type f -name xcodegen -perm -u+x | head -n 1)"
+        test -n "$bin" || { echo "xcodegen binary not found in archive"; exit 1; }
+        "$bin" --version
+        dirname "$bin" >> "$GITHUB_PATH"

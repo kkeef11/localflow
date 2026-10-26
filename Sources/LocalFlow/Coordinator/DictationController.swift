@@ -23,6 +23,10 @@ final class DictationController {
     /// pasting without checking this looks like success while nothing lands (the
     /// failure mode that cost a debugging session on 2026-07-09). Injectable for tests.
     private let axTrusted: @Sendable () -> Bool
+    /// Whether the microphone is usable. Without permission macOS hands the app silent
+    /// buffers rather than an error, and Whisper "transcribes" silence into phrases like
+    /// "Thank you." — which would then be pasted. Injectable for tests.
+    private let micAuthorized: @Sendable () -> Bool
     private var recording = false
     private var capturedTone = "neutral"
     private enum Mode { case dictation, command }
@@ -32,7 +36,8 @@ final class DictationController {
          injector: TextInjecting, state: AppState,
          contextProvider: ContextProvider, router: CommandRouter, llm: LLMGenerating,
          indicator: RecordingIndicating = NoopIndicator(),
-         axTrusted: @escaping @Sendable () -> Bool = { HealthCheck.accessibilityGranted() }) {
+         axTrusted: @escaping @Sendable () -> Bool = { HealthCheck.accessibilityGranted() },
+         micAuthorized: @escaping @Sendable () -> Bool = { HealthCheck.microphonePermission() == .granted }) {
         self.recorder = recorder
         self.transcriber = transcriber
         self.cleanup = cleanup
@@ -43,6 +48,7 @@ final class DictationController {
         self.llm = llm
         self.indicator = indicator
         self.axTrusted = axTrusted
+        self.micAuthorized = micAuthorized
     }
 
     func dictationHotkey(pressed: Bool) {
@@ -63,13 +69,32 @@ final class DictationController {
 
     private func beginRecording() {
         guard !recording else { return }
+        guard micAuthorized() else {
+            state.status = "Grant Microphone access"
+            return
+        }
+        switch state.setup.speechModel {
+        case .notDownloaded, .failed:
+            // Recording now would only end in an error after the user finished speaking.
+            state.status = "Speech model not ready — open Setup"
+            return
+        default:
+            break
+        }
         capturedTone = contextProvider.toneLabel(forBundleID: ContextProvider.frontmostBundleID())
         recording = true
         state.status = "Listening…"
         indicator.show(mode: mode == .command ? .command : .dictation)
         let indicator = self.indicator
         recorder.onLevel = { level in Task { @MainActor in indicator.updateLevel(level) } }
-        try? recorder.start()
+        do {
+            try recorder.start()
+        } catch {
+            recording = false
+            recorder.onLevel = nil
+            indicator.hide()
+            state.status = "Error: microphone unavailable (\(error.localizedDescription))"
+        }
     }
 
     private func finishRecording() {
@@ -86,15 +111,21 @@ final class DictationController {
                 if mode == .command {
                     state.status = "Command…"
                     await router.execute(router.decide(raw), llm: llm, injector: injector)
-                    state.status = "Idle"
+                    returnToIdle()
                     return
                 }
                 var text = raw
                 if let cleanup {
                     state.status = "Cleaning…"
-                    text = (try? await cleanup.clean(raw: text, toneLabel: capturedTone)) ?? text
+                    do {
+                        text = try await cleanup.clean(raw: text, toneLabel: capturedTone)
+                        state.notice = nil
+                    } catch {
+                        // Degrade to the raw transcript, but say so instead of failing silently.
+                        state.notice = "Cleanup skipped (\(error.localizedDescription)); pasted the raw transcript."
+                    }
                 }
-                guard !text.isEmpty else { state.status = "Idle"; return }
+                guard !text.isEmpty else { returnToIdle(); return }
                 guard axTrusted() else {
                     // Keep the transcript in history so it can be copied manually.
                     state.record(text)
@@ -103,10 +134,17 @@ final class DictationController {
                 }
                 injector.inject(text)
                 state.record(text)
-                state.status = "Idle"
+                returnToIdle()
             } catch {
                 state.status = "Error: \(error.localizedDescription)"
             }
         }
+    }
+
+    /// Back to "Idle" — or to an outstanding setup warning (e.g. Ollama down), so finishing
+    /// a dictation doesn't hide it.
+    private func returnToIdle() {
+        state.status = "Idle"
+        state.applySetupStatus()
     }
 }

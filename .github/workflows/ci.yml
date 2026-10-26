@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: ./.github/actions/setup-tools
+
+      - name: Shell script syntax
+        run: for f in scripts/*.sh; do bash -n "$f"; done
+
+      - name: Unit tests
+        run: scripts/build.sh test
+
+      - name: Release build (ad-hoc signed)
+        run: scripts/build.sh release
+
+      - name: Package unsigned test build
+        if: github.event_name == 'push'
+        run: scripts/release.sh "0.0.0-ci.${{ github.run_number }}" --unsigned
+
+      - name: Upload unsigned test build
+        if: github.event_name == 'push'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          # Not signed with Developer ID or notarized: Gatekeeper blocks it on other Macs.
+          # For maintainers testing a main build only — never link this as a release.
+          name: LocalFlow-unsigned-${{ github.sha }}
+          path: dist/*
+          retention-days: 14
+          if-no-files-found: error

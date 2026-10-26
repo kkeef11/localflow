@@ -9,6 +9,20 @@ struct Settings: Codable, Equatable {
         "com.apple.mail": "professional",
         "com.microsoft.VSCode": "code"
     ]
+
+    init() {}
+
+    /// Missing keys fall back to defaults instead of failing the whole decode. The
+    /// synthesized decoder would reject a settings file written by an older version as soon
+    /// as a field is added — silently resetting the user's dictionary on upgrade.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let d = Settings()
+        sttModel = try c.decodeIfPresent(String.self, forKey: .sttModel) ?? d.sttModel
+        llmModel = try c.decodeIfPresent(String.self, forKey: .llmModel) ?? d.llmModel
+        dictionary = try c.decodeIfPresent([String].self, forKey: .dictionary) ?? d.dictionary
+        contextModes = try c.decodeIfPresent([String: String].self, forKey: .contextModes) ?? d.contextModes
+    }
 }
 
 final class SettingsStore {
@@ -29,6 +43,12 @@ final class SettingsStore {
             settings = decoded
         } else {
             settings = Settings()
+            // Keep an unreadable file instead of letting the next save overwrite it.
+            if FileManager.default.fileExists(atPath: fileURL.path) {
+                let backup = fileURL.appendingPathExtension("unreadable")
+                try? FileManager.default.removeItem(at: backup)
+                try? FileManager.default.moveItem(at: fileURL, to: backup)
+            }
         }
     }
 

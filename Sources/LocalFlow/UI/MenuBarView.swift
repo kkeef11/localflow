@@ -3,6 +3,7 @@ import SwiftUI
 struct MenuBarView: View {
     @ObservedObject var state: AppState
     var onDictionarySave: (String) -> Void = { _ in }
+    var onShowSetup: () -> Void = {}
 
     /// Maps a free-form `AppState.status` string to a status-dot color. Pure and testable in
     /// isolation from SwiftUI: green means fully ready ("Idle"), red flags a hard failure
@@ -23,6 +24,12 @@ struct MenuBarView: View {
                     .frame(width: 8, height: 8)
                 Text("LocalFlow — \(state.status)")
             }
+            if let notice = state.notice {
+                Text(notice).font(.caption).foregroundStyle(.secondary)
+            }
+            if state.setup.requiredItemsMissing || state.setup.summary != nil {
+                Button("Finish setup…") { onShowSetup() }
+            }
             Divider()
             if state.history.isEmpty {
                 Text("No dictations yet").foregroundStyle(.secondary)
@@ -39,7 +46,11 @@ struct MenuBarView: View {
                 .font(.caption2)
                 .foregroundStyle(.secondary)
             Divider()
-            Button("Quit") { NSApplication.shared.terminate(nil) }
+            HStack {
+                Button("Setup…") { onShowSetup() }
+                Spacer()
+                Button("Quit") { NSApplication.shared.terminate(nil) }
+            }
         }
         .padding(8)
         .frame(width: 320)
