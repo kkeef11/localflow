@@ -34,12 +34,21 @@ The only network use is the one-time model downloads.
    the zip by default; to check it, download with another browser or turn off
    Safari → Settings → General → "Open 'safe' files after downloading".
 2. Double-click the zip, then drag **LocalFlow.app** into **Applications**.
-3. Open LocalFlow from Applications. macOS asks to confirm an app downloaded from the
-   internet; click **Open**. Release builds are notarized by Apple.
+3. Open LocalFlow from Applications. Releases are signed but **not notarized by Apple**,
+   so the first launch is blocked:
+   1. macOS says it can't verify LocalFlow. Click **Done**, not "Move to Trash".
+   2. Open **System Settings → Privacy & Security**, scroll down, and click **Open Anyway**
+      next to LocalFlow. Confirm with your password.
+
+   You do this once per version. Every release is signed with the same certificate, so
+   your permissions carry over when you upgrade. If a release notes that it's notarized,
+   it opens normally instead.
 4. LocalFlow runs in the menu bar (microphone icon), not the Dock. Its **Setup** window
    opens on first launch.
 
-You don't need Xcode, Homebrew, or Terminal.
+You don't need Xcode, Homebrew, or Terminal. If you prefer Terminal to the Settings
+steps, `xattr -dr com.apple.quarantine /Applications/LocalFlow.app` does the same. Only do
+this for a download you trust.
 
 ## First-run setup
 
@@ -128,19 +137,19 @@ zip isn't notarized, Gatekeeper blocks it on other Macs, and it isn't a release.
 Push a version tag such as `v0.2.0` after bumping `MARKETING_VERSION` in `project.yml`.
 `.github/workflows/release.yml` then does the rest:
 
-1. Builds the app and signs it with Developer ID.
-2. Notarizes it and staples the ticket.
-3. Verifies the result.
-4. Attaches `LocalFlow-0.2.0.zip` and its `.sha256` to a draft GitHub Release.
+1. Builds the app and signs it, with the free self-signed certificate or, if those
+   secrets are set, with Developer ID plus notarization.
+2. Verifies the result.
+3. Attaches `LocalFlow-0.2.0.zip` and its `.sha256` to a draft GitHub Release.
 
-This needs an Apple Developer Program membership and six repository secrets. See
-**[docs/RELEASING.md](docs/RELEASING.md)**.
+The free route needs only two repository secrets, created by
+`scripts/create-signing-cert.sh`. See **[docs/RELEASING.md](docs/RELEASING.md)**.
 
 ## Upgrading
 
 Quit LocalFlow (menu → **Quit**), drag the new `LocalFlow.app` into Applications, and choose
 **Replace**. Settings, your vocabulary, and downloaded models live outside the app, so they
-are kept. Permissions carry over between releases signed by the same team.
+are kept. Permissions carry over between releases signed with the same certificate.
 
 If you switch from a self-built copy to a release (or the other way), macOS sees a
 different signature, so you'll need to grant permissions once more. First remove the old

@@ -31,6 +31,40 @@ jobs:
       - name: Release build (ad-hoc signed)
         run: scripts/build.sh release
 
+      # Exercises the self-signed release path (scripts/create-signing-cert.sh + release.sh
+      # --self-signed) with a throwaway certificate, set up the same way release.yml does.
+      - name: Self-signed release check (throwaway certificate)
+        env:
+          BUILD_NUMBER: ${{ github.run_number }}
+        run: |
+          scripts/create-signing-cert.sh "$RUNNER_TEMP/selfsign"
+          keychain="$RUNNER_TEMP/selfsign.keychain-db"
+          keychain_password="$(openssl rand -base64 32)"
+          echo "::add-mask::$keychain_password"
+          security create-keychain -p "$keychain_password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$keychain_password" "$keychain"
+          security import "$RUNNER_TEMP/selfsign/LocalFlow-Self-Signed.p12" -k "$keychain" \
+            -P "$(cat "$RUNNER_TEMP/selfsign/p12-password.txt")" -T /usr/bin/codesign -T /usr/bin/security
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$keychain_password" "$keychain" >/dev/null
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          before="$(security list-keychains -d user)"
+
+          SIGNING_KEYCHAIN="$keychain" scripts/release.sh "0.0.0-ci.$BUILD_NUMBER" --self-signed
+
+          app=build/release/export/LocalFlow.app
+          codesign -dvv "$app" 2>&1 | grep "Authority=LocalFlow Self-Signed"
+          codesign -d -r- "$app" 2>&1 | grep "certificate leaf"
+          test "$(security list-keychains -d user)" = "$before" || { echo "::error::release.sh did not restore the keychain search list"; exit 1; }
+          # Throwaway certificate: never let this zip reach an uploaded artifact.
+          rm -f "dist/LocalFlow-0.0.0-ci.$BUILD_NUMBER.zip" "dist/LocalFlow-0.0.0-ci.$BUILD_NUMBER.zip.sha256"
+
+      - name: Remove throwaway signing material
+        if: always()
+        run: |
+          security delete-keychain "$RUNNER_TEMP/selfsign.keychain-db" 2>/dev/null || true
+          rm -rf "$RUNNER_TEMP/selfsign"
+
       - name: Package unsigned test build
         if: github.event_name == 'push'
         env:
