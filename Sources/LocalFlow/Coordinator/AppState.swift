@@ -34,8 +34,8 @@ enum PermissionState: Equatable {
     case granted, notDetermined, denied
 }
 
-/// Ollama readiness. Ollama is optional: anything but `.ready` means cleanup is skipped and
-/// the raw transcript is pasted.
+/// Ollama readiness. Ollama is part of required setup; if it stops responding mid-session,
+/// dictation still pastes the raw transcript (with a notice) rather than losing it.
 enum OllamaStatus: Equatable {
     case unknown, ready, modelMissing, notRunning, notInstalled
 }
@@ -64,12 +64,16 @@ struct SetupStatus: Equatable {
     /// Progress of an in-app `ollama pull`, if one is running.
     var ollamaPull: Double?
 
-    /// Items without which dictation can't work at all.
+    /// Setup steps still to do. Keeps the setup window opening at launch until all are done.
     var requiredItemsMissing: Bool {
         if microphone != .granted || !accessibility || !hotkeysActive { return true }
         switch speechModel {
         case .notDownloaded, .failed: return true
-        default: return false
+        default: break
+        }
+        switch ollama {
+        case .notInstalled, .notRunning, .modelMissing: return true
+        case .unknown, .ready: return false
         }
     }
 
@@ -86,9 +90,9 @@ struct SetupStatus: Equatable {
         case .unknown, .ready: break
         }
         switch ollama {
-        case .notInstalled: return "Ollama not installed (cleanup off)"
-        case .notRunning: return "Ollama not running (cleanup off)"
-        case .modelMissing: return "Ollama model \(ollamaModel) missing (cleanup off)"
+        case .notInstalled: return "Ollama not installed"
+        case .notRunning: return "Ollama not running"
+        case .modelMissing: return "Ollama model \(ollamaModel) missing"
         case .unknown, .ready: return nil
         }
     }

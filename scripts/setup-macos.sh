@@ -124,7 +124,7 @@ if [[ -n "$BREW" ]]; then
     # tools it installs visible to the rest of this script and to scripts/build.sh.
     PATH="$(dirname "$BREW"):$PATH"; export PATH
 else
-    warn "Homebrew not found — needed only to install xcodegen (and optionally ollama) below."
+    warn "Homebrew not found — needed only to install xcodegen (and, if you like, ollama) below."
     hint "Install from https://brew.sh, or install xcodegen manually: https://github.com/yonaskolb/XcodeGen/releases"
 fi
 
@@ -152,7 +152,7 @@ elif [[ "$FAILURES" -eq 0 ]]; then
 fi
 
 # ---------------------------------------------------------------------------------------
-step "5. Ollama (optional — powers transcript cleanup; dictation works without it)"
+step "5. Ollama (required by LocalFlow at runtime for cleanup; not needed to build)"
 LLM_MODEL="$(setting llmModel "$DEFAULT_LLM_MODEL")"
 OLLAMA_CLI=""
 if command -v ollama >/dev/null 2>&1; then OLLAMA_CLI="$(command -v ollama)"

@@ -2,8 +2,8 @@
 
 Fully local, offline macOS dictation for the menu bar. Hold a key, speak, and the text is
 pasted at your cursor. [WhisperKit](https://github.com/argmaxinc/WhisperKit) turns speech
-into text on-device. An optional local [Ollama](https://ollama.com) model removes filler
-words, fixes punctuation, and handles voice commands. Audio and text never leave your Mac.
+into text on-device. A local [Ollama](https://ollama.com) model removes filler words, fixes
+punctuation, and handles voice commands. Audio and text never leave your Mac.
 The only network use is the one-time model downloads.
 
 ## What LocalFlow does
@@ -21,8 +21,9 @@ The only network use is the one-time model downloads.
 |---|---|
 | macOS | 14 Sonoma or later |
 | Mac | Apple Silicon recommended. Intel builds but hasn't been tested, and Whisper large-v3 is very slow there. |
-| Memory | 16 GB recommended when using Ollama cleanup (Whisper ≈ 3 GB + qwen2.5:7b ≈ 5 GB). 8 GB works without Ollama. |
-| Disk | ~3 GB for the speech model, plus ~4.7 GB for the optional cleanup model |
+| Memory | 16 GB recommended (Whisper ≈ 3 GB + qwen2.5:7b ≈ 5 GB). 8 GB Macs will be slow. |
+| Disk | ~3 GB for the speech model, plus ~4.7 GB for the cleanup model |
+| Other software | [Ollama](https://ollama.com/download) (free). The Setup window links to it. |
 | Network | Only for the first-run model downloads |
 
 ## Installation — downloaded release
@@ -61,14 +62,15 @@ Each row has one button for its next step, and rows turn green as you finish the
 | **Accessibility** | To paste at the cursor and read selected text | **Open Settings** → turn on LocalFlow |
 | **Input Monitoring** | To detect the Right Option / Right Shift hotkeys | **Open Settings** → turn on LocalFlow, then click **Relaunch** if macOS asks |
 | **Speech model** | Whisper large-v3 speech recognition | Click **Download (~3 GB)** — one time; progress shows in the window and status line |
-| **Ollama** (optional) | Cleanup and voice commands | **Get Ollama** → install the app → **Start Ollama** → **Download** the model (several GB) |
+| **Ollama** | Cleanup and voice commands | **Get Ollama** → install the app → **Start Ollama** → **Download** the model (several GB) |
 
 What happens if a step is skipped:
 
 - **Microphone off:** LocalFlow won't record, and it tells you why. It doesn't record
   silence.
 - **Accessibility off:** your transcript is kept in the menu's history instead of pasted.
-- **Ollama missing:** dictation still works and pastes the raw transcript.
+- **Ollama stops responding later:** your dictation is still pasted, as the raw transcript,
+  with a note under the status line.
 - **Dictation waits for the speech model.** Until it has finished downloading and
   preparing, the hotkeys show a status message instead of recording.
 - **Nothing downloads without a click.** The first time the speech model loads, it is also
@@ -88,7 +90,7 @@ open build/DerivedData/Build/Products/Debug/LocalFlow.app
 ```
 
 `setup-macos.sh` is safe to re-run. It checks macOS, Xcode (including the license and
-first-launch setup), and Homebrew. It installs XcodeGen and, optionally, Ollama. It checks
+first-launch setup), and Homebrew. It installs XcodeGen and, if you agree, Ollama. It checks
 the cleanup model and offers to download it (`--pull-model` downloads without asking). It
 sets up code signing and builds the app. It asks before installing anything, never uses
 `sudo`, and prints the exact command for any step you need to do yourself. Use `--yes` to
@@ -183,9 +185,9 @@ Nothing is deleted automatically — not on upgrade, and not on uninstall.
 - **Permissions vanish after every rebuild (source builds).** The build is ad-hoc signed.
   Set up an Apple Development certificate (see [Code signing](#code-signing-for-development)),
   then grant permissions one last time.
-- **"Ollama not running (cleanup off)".** Start the Ollama app, or run
-  `brew services start ollama` for a Homebrew install. Dictation still works without it
-  and pastes the raw transcript.
+- **"Ollama not running".** Start the Ollama app (or click **Start Ollama** in Setup), or
+  run `brew services start ollama` for a Homebrew install. Until it's running, dictations
+  are pasted as the raw transcript.
 - **"Cleanup skipped (…)" under the status.** Ollama returned an error, often because the
   model is still loading or the Mac is short on memory. The raw transcript was pasted.
   Check it with `ollama run qwen2.5:7b "hi"`.
