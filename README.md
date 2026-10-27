@@ -53,7 +53,7 @@ this for a download you trust.
 
 ## First-run setup
 
-The setup window lists what's missing. You can reopen it any time from the menu (**Setup…**).
+The setup window lists what's missing. You can reopen it any time from the menu (**Setup & Models…**).
 Each row has one button for its next step, and rows turn green as you finish them.
 
 | Item | Why | How |
@@ -107,19 +107,24 @@ minute and everything lagged. The compact pair takes a few seconds.
   roughly twice the speed. It's more likely to occasionally rephrase something or slip on
   a complex rewrite.
 
-**Choosing a model yourself.** Quit LocalFlow, then set either model in
-`~/Library/Application Support/LocalFlow/settings.json`:
+**Choosing a size.** Open the menu → **Setup & Models…**. Under **Model size**, pick:
+- **Automatic** (the default): Compact or Full quality, based on your Mac's memory.
+- **Compact** or **Full quality**: always that pair. Full quality shows a warning on Macs
+  with less than 12 GB.
+
+Then click **Relaunch**, and **Download** anything new in the same window. Models you
+switch away from stay on disk until you delete them (see [Uninstalling](#uninstalling)).
+
+**Advanced: other models.** Quit LocalFlow and set `sttModel` and/or `llmModel` in
+`~/Library/Application Support/LocalFlow/settings.json`. For example:
 
 ```json
-{"sttModel": "large-v3", "llmModel": "qwen2.5:7b"}
+{"sttModel": "small.en", "llmModel": "llama3.2:3b"}
 ```
 
-Reopen LocalFlow and click **Download** for anything new in Setup. A value in this file
-always overrides the memory-based default. To return to the defaults, remove the key. Any
-[WhisperKit model name](https://huggingface.co/argmaxinc/whisperkit-coreml/tree/main) without the
-`openai_whisper-` prefix works (e.g. `small.en`), as does any Ollama model, though
-LocalFlow is only tested with the ones above. Models you stop using stay on disk until you
-delete them (see [Uninstalling](#uninstalling)).
+Any [WhisperKit model name](https://huggingface.co/argmaxinc/whisperkit-coreml/tree/main)
+without the `openai_whisper-` prefix works, as does any Ollama model, but only the presets
+are tested. Setup shows them as "custom models", and choosing a size there replaces them.
 
 ## Installation — build from source
 
@@ -222,7 +227,7 @@ Nothing is deleted automatically — not on upgrade, and not on uninstall.
 
 ## Troubleshooting
 
-- **Hotkeys do nothing.** Open **Setup…**. If *Input Monitoring* isn't green, turn
+- **Hotkeys do nothing.** Open **Setup & Models…**. If *Input Monitoring* isn't green, turn
   LocalFlow on in System Settings → Privacy & Security → Input Monitoring, then click
   **Relaunch**. macOS often needs a restart before the app sees that permission.
 - **Status says "Grant Accessibility (paste blocked)".** Your text is in the menu's

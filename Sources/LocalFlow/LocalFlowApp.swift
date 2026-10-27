@@ -37,10 +37,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, Obse
     /// Health refreshes overlap (timer, menu open, Check Again) and the Ollama probe can take
     /// up to 1.5 s, so only the most recently started refresh may publish its result.
     private var healthGeneration = 0
+    /// The models loaded at launch. Changing the preset takes effect on relaunch.
+    private var runningModels = ModelDefaults.full
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let state = self.state
-        let sttModel = settings.settings.sttModel
+        let models = settings.settings.models()
+        runningModels = models
+        let sttModel = models.stt
         let transcriber = WhisperKitTranscriber(model: sttModel, promptTerms: settings.settings.dictionary,
                                                 onState: { model in
             Task { @MainActor in
@@ -48,7 +52,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, Obse
                 state.applySetupStatus()
             }
         })
-        let llm = OllamaClient(model: settings.settings.llmModel)
+        let llm = OllamaClient(model: models.llm)
         let cleanup = CleanupService(llm: llm, dictionary: settings.settings.dictionary)
         let contextProvider = ContextProvider(modes: settings.settings.contextModes)
         let router = CommandRouter(registry: ActionRegistry())
@@ -64,7 +68,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, Obse
         hotkeys.onDictation = { pressed in Task { @MainActor in controller.dictationHotkey(pressed: pressed) } }
         hotkeys.onCommand = { pressed in Task { @MainActor in controller.commandHotkey(pressed: pressed) } }
         state.dictionaryText = settings.settings.dictionary.joined(separator: ", ")
-        state.setup.ollamaModel = settings.settings.llmModel
+        state.setup.ollamaModel = models.llm
+        state.modelChoice.preset = settings.settings.modelPreset
+        if settings.settings.hasCustomModels {
+            state.modelChoice.custom = "\(models.stt) + \(models.llm)"
+        }
         state.setup.sttModel = sttModel
 
         // Speech model: load it now if a previous download completed (fully offline);
@@ -105,7 +113,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, Obse
         state.setup.hotkeysActive = hotkeys.start()
         healthGeneration += 1
         let generation = healthGeneration
-        let ollama = await HealthCheck.ollamaStatus(model: settings.settings.llmModel)
+        let ollama = await HealthCheck.ollamaStatus(model: runningModels.llm)
         guard generation == healthGeneration else { return } // a newer refresh owns the result
         state.setup.ollama = ollama
         state.applySetupStatus()
@@ -120,6 +128,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, Obse
             .split(separator: ",")
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
+    }
+
+    /// Saves a model-size choice. Choosing a preset replaces custom models from settings.json.
+    /// The models are loaded at launch, so a change asks for a relaunch; after it, Setup shows
+    /// Download for any model not on disk yet.
+    func chooseModelPreset(_ preset: ModelPreset) {
+        settings.settings.modelPreset = preset
+        settings.settings.sttModel = nil
+        settings.settings.llmModel = nil
+        state.modelChoice.preset = preset
+        state.modelChoice.custom = nil
+        state.modelChoice.relaunchNeeded = settings.settings.models() != runningModels
     }
 
     // MARK: - Setup window
@@ -186,7 +206,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, Obse
                 }
             },
             pullOllamaModel: { [weak self] in self?.pullOllamaModel() },
-            recheck: { [weak self] in self?.refreshHealth() }
+            recheck: { [weak self] in self?.refreshHealth() },
+            chooseModelPreset: { [weak self] preset in self?.chooseModelPreset(preset) }
         )
     }
 

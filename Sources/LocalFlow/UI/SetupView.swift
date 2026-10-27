@@ -11,11 +11,12 @@ struct SetupActions {
     var startOllama: () -> Void = {}
     var pullOllamaModel: () -> Void = {}
     var recheck: () -> Void = {}
+    var chooseModelPreset: (ModelPreset) -> Void = { _ in }
 }
 
 /// First-run checklist: one row per dependency, each explaining why it's needed and offering
 /// the single next step. Shown in its own window at launch when something required is
-/// missing, and reachable any time from the menu's "Setup…" button.
+/// missing, and reachable any time from the menu's "Setup & Models…" button.
 struct SetupView: View {
     @ObservedObject var state: AppState
     var actions: SetupActions
@@ -47,6 +48,9 @@ struct SetupView: View {
             speechRow(setup.speechModel, name: setup.sttModel)
             ollamaRow(setup)
 
+            Divider()
+            modelSizeSection(state.modelChoice)
+
             HStack {
                 Spacer()
                 Button("Check Again") { actions.recheck() }
@@ -54,6 +58,51 @@ struct SetupView: View {
         }
         .padding(20)
         .frame(width: 460)
+    }
+
+    /// Model-size picker. Choosing a preset only saves it; the models load at launch, so a
+    /// change shows a Relaunch button, and the rows above offer any new downloads afterwards.
+    @ViewBuilder
+    private func modelSizeSection(_ choice: ModelChoice) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Model size").bold()
+            if let custom = choice.custom {
+                Text("Using custom models from settings.json (\(custom)). Choosing a size below replaces them.")
+                    .font(.callout).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            ForEach(ModelPreset.allCases) { preset in
+                let selected = choice.custom == nil && choice.preset == preset
+                Button {
+                    actions.chooseModelPreset(preset)
+                } label: {
+                    HStack(alignment: .top, spacing: 8) {
+                        Image(systemName: selected ? "largecircle.fill.circle" : "circle")
+                            .foregroundStyle(selected ? Color.accentColor : .secondary)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(preset.title)
+                            Text(preset.detail(memory: choice.memory))
+                                .font(.callout).foregroundStyle(.secondary)
+                            if let warning = preset.warning(memory: choice.memory) {
+                                Text(warning).font(.callout).foregroundStyle(.orange)
+                            }
+                        }
+                        Spacer(minLength: 0)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+            if choice.relaunchNeeded {
+                HStack {
+                    Text("Relaunch to switch models. Any new model downloads from this window afterwards.")
+                        .font(.callout).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 8)
+                    Button("Relaunch") { actions.relaunch() }
+                }
+            }
+        }
     }
 
     @ViewBuilder

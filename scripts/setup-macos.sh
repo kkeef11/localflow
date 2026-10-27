@@ -16,8 +16,10 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 MIN_MACOS="14.0"        # project.yml deploymentTarget
 MIN_XCODE="26.0"        # Swift 6.2: the pinned swift-collections/swift-crypto need tools 6.1+
 PINNED_XCODEGEN="2.46.0" # what CI uses (.github/actions/setup-tools/action.yml)
-# Same memory-based defaults as the app (Sources/LocalFlow/Settings/ModelDefaults.swift).
-if (( $(sysctl -n hw.memsize) < 12 * 1073741824 )); then
+# Same model choice as the app (Sources/LocalFlow/Settings/ModelDefaults.swift): the
+# "Model size" preset from settings.json, where "automatic" picks by memory.
+preset="$(plutil -extract modelPreset raw -o - "$HOME/Library/Application Support/LocalFlow/settings.json" 2>/dev/null || echo automatic)"
+if [[ "$preset" == "compact" ]] || { [[ "$preset" != "full" ]] && (( $(sysctl -n hw.memsize) < 12 * 1073741824 )); }; then
     DEFAULT_LLM_MODEL="qwen2.5:3b";  DEFAULT_STT_MODEL="large-v3-v20240930_626MB"; LLM_SIZE="~1.9 GB"; STT_SIZE="~0.6 GB"
 else
     DEFAULT_LLM_MODEL="qwen2.5:7b";  DEFAULT_STT_MODEL="large-v3";                 LLM_SIZE="~4.7 GB"; STT_SIZE="~3 GB"

@@ -47,7 +47,7 @@ struct MenuBarView: View {
                 .foregroundStyle(.secondary)
             Divider()
             HStack {
-                Button("Setup…") { onShowSetup() }
+                Button("Setup & Models…") { onShowSetup() }
                 Spacer()
                 Button("Quit") { NSApplication.shared.terminate(nil) }
             }

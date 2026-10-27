@@ -25,6 +25,49 @@ enum ModelDefaults {
     static var forThisMac: Pair {
         forMemory(ProcessInfo.processInfo.physicalMemory)
     }
+
+    static func pair(for preset: ModelPreset, memory: UInt64) -> Pair {
+        switch preset {
+        case .automatic: return forMemory(memory)
+        case .compact: return compact
+        case .full: return full
+        }
+    }
+}
+
+/// The model-size choice offered in the Setup window. `automatic` follows `ModelDefaults`.
+enum ModelPreset: String, Codable, CaseIterable, Identifiable {
+    case automatic, compact, full
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .automatic: return "Automatic"
+        case .compact: return "Compact"
+        case .full: return "Full quality"
+        }
+    }
+
+    /// One line for the picker, specific to this Mac's memory.
+    func detail(memory: UInt64) -> String {
+        let gb = Int((Double(memory) / 1_073_741_824).rounded())
+        switch self {
+        case .automatic:
+            let resolved = ModelDefaults.forMemory(memory) == ModelDefaults.compact ? "Compact" : "Full quality"
+            return "\(resolved) on this \(gb) GB Mac."
+        case .compact:
+            return "~2.5 GB. Fastest; slightly less accurate on rare words and complex rewrites."
+        case .full:
+            return "~7.7 GB. Most accurate; best on Macs with 16 GB or more."
+        }
+    }
+
+    /// Full-size models fill a Mac with less than 12 GB and make it swap and lag.
+    func warning(memory: UInt64) -> String? {
+        guard self == .full, memory < ModelDefaults.compactBelowBytes else { return nil }
+        return "May be slow and make your Mac lag with less than 12 GB of memory."
+    }
 }
 
 /// How a model is described in the setup checklist. Unknown names (set by hand in

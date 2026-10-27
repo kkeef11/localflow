@@ -10,6 +10,8 @@ final class AppState: ObservableObject {
     @Published var setup = SetupStatus()
     /// Non-blocking, informational message under the status line (e.g. cleanup was skipped).
     @Published var notice: String?
+    /// The model-size picker in the Setup window.
+    @Published var modelChoice = ModelChoice()
 
     func record(_ text: String) {
         guard !text.isEmpty else { return }
@@ -28,6 +30,15 @@ final class AppState: ObservableObject {
         status == "Idle" || ["Grant", "Ollama", "Speech", "Downloading", "Preparing"]
             .contains { status.hasPrefix($0) }
     }
+}
+
+struct ModelChoice: Equatable {
+    var preset: ModelPreset = .automatic
+    /// Set when settings.json names models outside the presets, e.g. "small.en + llama3".
+    var custom: String?
+    var memory: UInt64 = ProcessInfo.processInfo.physicalMemory
+    /// The chosen models differ from the ones loaded at launch.
+    var relaunchNeeded = false
 }
 
 enum PermissionState: Equatable {

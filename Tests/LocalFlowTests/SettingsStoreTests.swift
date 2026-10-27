@@ -22,8 +22,8 @@ final class SettingsStoreTests: XCTestCase {
         addTeardownBlock { try? FileManager.default.removeItem(at: url) }
 
         let store = SettingsStore(fileURL: url)
-        XCTAssertEqual(store.settings.sttModel, ModelDefaults.forThisMac.stt)
-        XCTAssertEqual(store.settings.llmModel, ModelDefaults.forThisMac.llm)
+        XCTAssertEqual(store.settings.modelPreset, .automatic)
+        XCTAssertEqual(store.settings.models(), ModelDefaults.forThisMac)
     }
 
     func test_older_file_missing_keys_keeps_values_and_fills_defaults() throws {
@@ -35,7 +35,8 @@ final class SettingsStoreTests: XCTestCase {
         let store = SettingsStore(fileURL: url)
         XCTAssertEqual(store.settings.dictionary, ["Acme"])
         XCTAssertEqual(store.settings.llmModel, "llama3")
-        XCTAssertEqual(store.settings.sttModel, ModelDefaults.forThisMac.stt, "missing key → memory-based default")
+        XCTAssertEqual(store.settings.models().stt, ModelDefaults.forThisMac.stt, "missing key → memory-based default")
+        XCTAssertEqual(store.settings.models().llm, "llama3", "a lone custom model is kept")
         XCTAssertEqual(store.settings.contextModes, Settings().contextModes)
     }
 
