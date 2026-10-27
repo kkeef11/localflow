@@ -3,7 +3,7 @@
 #
 #   scripts/setup-macos.sh             # interactive: asks before installing or downloading
 #   scripts/setup-macos.sh --yes       # install missing dev tools (xcodegen, ollama) without asking
-#   scripts/setup-macos.sh --pull-model  # also download the Ollama cleanup model (~4.7 GB) without asking
+#   scripts/setup-macos.sh --pull-model  # also download the Ollama cleanup model (2–5 GB) without asking
 #   scripts/setup-macos.sh --no-build  # check and configure only; skip the build
 #
 # Never uses sudo, never changes system settings, never deletes anything. When something
@@ -16,8 +16,14 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 MIN_MACOS="14.0"        # project.yml deploymentTarget
 MIN_XCODE="26.0"        # Swift 6.2: the pinned swift-collections/swift-crypto need tools 6.1+
 PINNED_XCODEGEN="2.46.0" # what CI uses (.github/actions/setup-tools/action.yml)
-DEFAULT_LLM_MODEL="qwen2.5:7b"
-DEFAULT_STT_MODEL="large-v3"
+# Same model choice as the app (Sources/LocalFlow/Settings/ModelDefaults.swift): the
+# "Model size" preset from settings.json, where "automatic" picks by memory.
+preset="$(plutil -extract modelPreset raw -o - "$HOME/Library/Application Support/LocalFlow/settings.json" 2>/dev/null || echo automatic)"
+if [[ "$preset" == "compact" ]] || { [[ "$preset" != "full" ]] && (( $(sysctl -n hw.memsize) < 12 * 1073741824 )); }; then
+    DEFAULT_LLM_MODEL="qwen2.5:3b";  DEFAULT_STT_MODEL="large-v3-v20240930_626MB"; LLM_SIZE="~1.9 GB"; STT_SIZE="~0.6 GB"
+else
+    DEFAULT_LLM_MODEL="qwen2.5:7b";  DEFAULT_STT_MODEL="large-v3";                 LLM_SIZE="~4.7 GB"; STT_SIZE="~3 GB"
+fi
 SETTINGS_JSON="$HOME/Library/Application Support/LocalFlow/settings.json"
 SIGNING_LOCAL="$ROOT/Config/Signing.local.xcconfig"
 
@@ -82,7 +88,7 @@ arch="$(uname -m)"
 if [[ "$arch" == "arm64" ]]; then
     ok "Apple Silicon ($arch)"
 else
-    warn "Intel Mac ($arch): builds, but on-device Whisper large-v3 is very slow without the Neural Engine."
+    warn "Intel Mac ($arch): builds, but on-device Whisper is very slow without the Neural Engine."
     hint "Consider a smaller speech model (see README → Known limitations)."
 fi
 
@@ -176,7 +182,7 @@ if [[ -n "$OLLAMA_CLI" ]]; then
             ok "Cleanup model $LLM_MODEL is installed"
         else
             warn "Cleanup model $LLM_MODEL is not downloaded."
-            if [[ "$PULL_MODEL" -eq 1 ]] || ask "Download $LLM_MODEL now (~4.7 GB)?" n; then
+            if [[ "$PULL_MODEL" -eq 1 ]] || ask "Download $LLM_MODEL now ($LLM_SIZE)?" n; then
                 "$OLLAMA_CLI" pull "$LLM_MODEL" && ok "Downloaded $LLM_MODEL" || fail "ollama pull $LLM_MODEL failed."
             else
                 hint "Later: ollama pull $LLM_MODEL   (or use the Download button in LocalFlow's menu)"
@@ -195,7 +201,7 @@ STT_MODEL="$(setting sttModel "$DEFAULT_STT_MODEL")"
 if ls -d "$HOME/Library/Application Support/LocalFlow/Models/models/argmaxinc/whisperkit-coreml/"*"$STT_MODEL" >/dev/null 2>&1; then
     ok "Whisper $STT_MODEL is cached for LocalFlow"
 else
-    ok "Whisper $STT_MODEL is not downloaded yet: click Download in LocalFlow's Setup window (~3 GB, one time)."
+    ok "Whisper $STT_MODEL is not downloaded yet: click Download in LocalFlow's Setup window ($STT_SIZE, one time)."
 fi
 
 # ---------------------------------------------------------------------------------------

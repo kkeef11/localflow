@@ -11,11 +11,12 @@ struct SetupActions {
     var startOllama: () -> Void = {}
     var pullOllamaModel: () -> Void = {}
     var recheck: () -> Void = {}
+    var chooseModelPreset: (ModelPreset) -> Void = { _ in }
 }
 
 /// First-run checklist: one row per dependency, each explaining why it's needed and offering
 /// the single next step. Shown in its own window at launch when something required is
-/// missing, and reachable any time from the menu's "Setup…" button.
+/// missing, and reachable any time from the menu's "Setup & Models…" button.
 struct SetupView: View {
     @ObservedObject var state: AppState
     var actions: SetupActions
@@ -44,8 +45,11 @@ struct SetupView: View {
                     Button("Relaunch") { actions.relaunch() }
                 }
             }
-            speechRow(setup.speechModel)
+            speechRow(setup.speechModel, name: setup.sttModel)
             ollamaRow(setup)
+
+            Divider()
+            modelSizeSection(state.modelChoice)
 
             HStack {
                 Spacer()
@@ -56,15 +60,63 @@ struct SetupView: View {
         .frame(width: 460)
     }
 
+    /// Model-size picker. Choosing a preset only saves it; the models load at launch, so a
+    /// change shows a Relaunch button, and the rows above offer any new downloads afterwards.
     @ViewBuilder
-    private func speechRow(_ model: SpeechModelState) -> some View {
-        let why = "Whisper large-v3 turns speech into text on-device. One-time ~3 GB download; works offline afterwards."
+    private func modelSizeSection(_ choice: ModelChoice) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Model size").bold()
+            if let custom = choice.custom {
+                Text("Using custom models from settings.json (\(custom)). Choosing a size below replaces them.")
+                    .font(.callout).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            ForEach(ModelPreset.allCases) { preset in
+                let selected = choice.custom == nil && choice.preset == preset
+                Button {
+                    actions.chooseModelPreset(preset)
+                } label: {
+                    HStack(alignment: .top, spacing: 8) {
+                        Image(systemName: selected ? "largecircle.fill.circle" : "circle")
+                            .foregroundStyle(selected ? Color.accentColor : .secondary)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(preset.title)
+                            Text(preset.detail(memory: choice.memory))
+                                .font(.callout).foregroundStyle(.secondary)
+                            if let warning = preset.warning(memory: choice.memory) {
+                                Text(warning).font(.callout).foregroundStyle(.orange)
+                            }
+                        }
+                        Spacer(minLength: 0)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+            if choice.relaunchNeeded {
+                HStack {
+                    Text("Relaunch to switch models. Any new model downloads from this window afterwards.")
+                        .font(.callout).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 8)
+                    Button("Relaunch") { actions.relaunch() }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func speechRow(_ model: SpeechModelState, name: String) -> some View {
+        let info = ModelInfo.speech(name)
+        let download = info.size.map { "One-time \($0) download" } ?? "One-time download"
+        let why = "\(info.name) turns speech into text on-device. \(download); works offline afterwards."
+        let sizeLabel = info.size.map { " (\($0))" } ?? ""
         switch model {
         case .ready, .unknown:
             row(done: true, title: "Speech model", why: why) { EmptyView() }
         case .notDownloaded:
             row(done: false, title: "Speech model", why: why) {
-                Button("Download (~3 GB)") { actions.downloadSpeechModel() }
+                Button("Download\(sizeLabel)") { actions.downloadSpeechModel() }
             }
         case .downloading(let fraction):
             row(done: false, title: "Speech model", why: "Downloading… you can keep using your Mac. If interrupted, it resumes next time.") {
@@ -80,7 +132,7 @@ struct SetupView: View {
                 VStack(alignment: .trailing) {
                     Button("Retry") { actions.downloadSpeechModel() }
                     Button("Re-download") { actions.redownloadSpeechModel() }
-                        .help("Delete the downloaded speech model and download it again (~3 GB)")
+                        .help("Delete the downloaded speech model and download it again\(sizeLabel)")
                 }
             }
         }
@@ -108,7 +160,7 @@ struct SetupView: View {
                 }
             } else {
                 row(done: false, title: title,
-                    why: "Ollama is running but the cleanup model \(setup.ollamaModel) isn't downloaded (several GB).") {
+                    why: "Ollama is running but the cleanup model \(setup.ollamaModel) isn't downloaded (\(ModelInfo.cleanupSize(setup.ollamaModel) ?? "several GB")).") {
                     Button("Download") { actions.pullOllamaModel() }
                 }
             }

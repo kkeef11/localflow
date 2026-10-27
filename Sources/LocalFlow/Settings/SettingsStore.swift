@@ -1,8 +1,12 @@
 import Foundation
 
 struct Settings: Codable, Equatable {
-    var sttModel: String = "large-v3"
-    var llmModel: String = "qwen2.5:7b"
+    /// Model size chosen in Setup. `automatic` picks by the Mac's memory (ModelDefaults).
+    var modelPreset: ModelPreset = .automatic
+    /// Custom model names set by hand in settings.json. nil = use the preset's model.
+    /// Optional so they're omitted when saving — otherwise any save would pin today's default.
+    var sttModel: String?
+    var llmModel: String?
     var dictionary: [String] = []
     var contextModes: [String: String] = [
         "com.tinyspeck.slackmacgap": "casual",
@@ -18,10 +22,31 @@ struct Settings: Codable, Equatable {
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         let d = Settings()
-        sttModel = try c.decodeIfPresent(String.self, forKey: .sttModel) ?? d.sttModel
-        llmModel = try c.decodeIfPresent(String.self, forKey: .llmModel) ?? d.llmModel
+        // try?: an unknown value (e.g. from a newer version) falls back instead of failing.
+        modelPreset = (try? c.decodeIfPresent(ModelPreset.self, forKey: .modelPreset)) ?? d.modelPreset
+        sttModel = try c.decodeIfPresent(String.self, forKey: .sttModel)
+        llmModel = try c.decodeIfPresent(String.self, forKey: .llmModel)
         dictionary = try c.decodeIfPresent([String].self, forKey: .dictionary) ?? d.dictionary
         contextModes = try c.decodeIfPresent([String: String].self, forKey: .contextModes) ?? d.contextModes
+        // Earlier builds stored both model names. A pair that is exactly one preset becomes
+        // that preset, so it shows as a choice in Setup rather than as "Custom".
+        if let stt = sttModel, let llm = llmModel {
+            for preset in [ModelPreset.compact, .full]
+            where ModelDefaults.pair(for: preset, memory: 0) == .init(stt: stt, llm: llm) {
+                modelPreset = preset
+                sttModel = nil
+                llmModel = nil
+            }
+        }
+    }
+
+    /// Whether settings.json names models outside the presets.
+    var hasCustomModels: Bool { sttModel != nil || llmModel != nil }
+
+    /// The models to run: the preset's pair, with any custom names replacing it.
+    func models(memory: UInt64 = ProcessInfo.processInfo.physicalMemory) -> ModelDefaults.Pair {
+        let base = ModelDefaults.pair(for: modelPreset, memory: memory)
+        return .init(stt: sttModel ?? base.stt, llm: llmModel ?? base.llm)
     }
 }
 

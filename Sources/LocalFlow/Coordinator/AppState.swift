@@ -10,6 +10,8 @@ final class AppState: ObservableObject {
     @Published var setup = SetupStatus()
     /// Non-blocking, informational message under the status line (e.g. cleanup was skipped).
     @Published var notice: String?
+    /// The model-size picker in the Setup window.
+    @Published var modelChoice = ModelChoice()
 
     func record(_ text: String) {
         guard !text.isEmpty else { return }
@@ -30,6 +32,15 @@ final class AppState: ObservableObject {
     }
 }
 
+struct ModelChoice: Equatable {
+    var preset: ModelPreset = .automatic
+    /// Set when settings.json names models outside the presets, e.g. "small.en + llama3".
+    var custom: String?
+    var memory: UInt64 = ProcessInfo.processInfo.physicalMemory
+    /// The chosen models differ from the ones loaded at launch.
+    var relaunchNeeded = false
+}
+
 enum PermissionState: Equatable {
     case granted, notDetermined, denied
 }
@@ -43,7 +54,7 @@ enum OllamaStatus: Equatable {
 enum SpeechModelState: Equatable {
     /// Not checked yet (launch). Treated as usable so the first launch doesn't flash errors.
     case unknown
-    /// No completed download on disk; waiting for the user to start the ~3 GB download.
+    /// No completed download on disk; waiting for the user to start the download.
     case notDownloaded
     case downloading(fraction: Double)
     /// Loading into memory. The very first load also compiles the model for this Mac's
@@ -61,6 +72,8 @@ struct SetupStatus: Equatable {
     var speechModel: SpeechModelState = .unknown
     var ollama: OllamaStatus = .unknown
     var ollamaModel = ""
+    /// Configured speech model name, for the setup checklist's description and sizes.
+    var sttModel = ""
     /// Progress of an in-app `ollama pull`, if one is running.
     var ollamaPull: Double?
 
