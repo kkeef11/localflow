@@ -1,8 +1,9 @@
 import Foundation
 
 struct Settings: Codable, Equatable {
-    var sttModel: String = "large-v3"
-    var llmModel: String = "qwen2.5:7b"
+    // Memory-based defaults (see ModelDefaults); an explicit value in settings.json wins.
+    var sttModel: String = ModelDefaults.forThisMac.stt
+    var llmModel: String = ModelDefaults.forThisMac.llm
     var dictionary: [String] = []
     var contextModes: [String: String] = [
         "com.tinyspeck.slackmacgap": "casual",

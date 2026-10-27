@@ -43,7 +43,7 @@ enum OllamaStatus: Equatable {
 enum SpeechModelState: Equatable {
     /// Not checked yet (launch). Treated as usable so the first launch doesn't flash errors.
     case unknown
-    /// No completed download on disk; waiting for the user to start the ~3 GB download.
+    /// No completed download on disk; waiting for the user to start the download.
     case notDownloaded
     case downloading(fraction: Double)
     /// Loading into memory. The very first load also compiles the model for this Mac's
@@ -61,6 +61,8 @@ struct SetupStatus: Equatable {
     var speechModel: SpeechModelState = .unknown
     var ollama: OllamaStatus = .unknown
     var ollamaModel = ""
+    /// Configured speech model name, for the setup checklist's description and sizes.
+    var sttModel = ""
     /// Progress of an in-app `ollama pull`, if one is running.
     var ollamaPull: Double?
 

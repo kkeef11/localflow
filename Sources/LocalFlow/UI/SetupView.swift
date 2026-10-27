@@ -44,7 +44,7 @@ struct SetupView: View {
                     Button("Relaunch") { actions.relaunch() }
                 }
             }
-            speechRow(setup.speechModel)
+            speechRow(setup.speechModel, name: setup.sttModel)
             ollamaRow(setup)
 
             HStack {
@@ -57,14 +57,17 @@ struct SetupView: View {
     }
 
     @ViewBuilder
-    private func speechRow(_ model: SpeechModelState) -> some View {
-        let why = "Whisper large-v3 turns speech into text on-device. One-time ~3 GB download; works offline afterwards."
+    private func speechRow(_ model: SpeechModelState, name: String) -> some View {
+        let info = ModelInfo.speech(name)
+        let download = info.size.map { "One-time \($0) download" } ?? "One-time download"
+        let why = "\(info.name) turns speech into text on-device. \(download); works offline afterwards."
+        let sizeLabel = info.size.map { " (\($0))" } ?? ""
         switch model {
         case .ready, .unknown:
             row(done: true, title: "Speech model", why: why) { EmptyView() }
         case .notDownloaded:
             row(done: false, title: "Speech model", why: why) {
-                Button("Download (~3 GB)") { actions.downloadSpeechModel() }
+                Button("Download\(sizeLabel)") { actions.downloadSpeechModel() }
             }
         case .downloading(let fraction):
             row(done: false, title: "Speech model", why: "Downloading… you can keep using your Mac. If interrupted, it resumes next time.") {
@@ -80,7 +83,7 @@ struct SetupView: View {
                 VStack(alignment: .trailing) {
                     Button("Retry") { actions.downloadSpeechModel() }
                     Button("Re-download") { actions.redownloadSpeechModel() }
-                        .help("Delete the downloaded speech model and download it again (~3 GB)")
+                        .help("Delete the downloaded speech model and download it again\(sizeLabel)")
                 }
             }
         }
@@ -108,7 +111,7 @@ struct SetupView: View {
                 }
             } else {
                 row(done: false, title: title,
-                    why: "Ollama is running but the cleanup model \(setup.ollamaModel) isn't downloaded (several GB).") {
+                    why: "Ollama is running but the cleanup model \(setup.ollamaModel) isn't downloaded (\(ModelInfo.cleanupSize(setup.ollamaModel) ?? "several GB")).") {
                     Button("Download") { actions.pullOllamaModel() }
                 }
             }

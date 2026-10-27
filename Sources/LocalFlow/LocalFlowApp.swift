@@ -65,9 +65,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, Obse
         hotkeys.onCommand = { pressed in Task { @MainActor in controller.commandHotkey(pressed: pressed) } }
         state.dictionaryText = settings.settings.dictionary.joined(separator: ", ")
         state.setup.ollamaModel = settings.settings.llmModel
+        state.setup.sttModel = sttModel
 
         // Speech model: load it now if a previous download completed (fully offline);
-        // otherwise wait for the user to start the ~3 GB download from the setup window.
+        // otherwise wait for the user to start the download from the setup window.
         if WhisperKitTranscriber.completedModelFolder(
             model: sttModel, in: WhisperKitTranscriber.defaultModelsDirectory) == nil {
             state.setup.speechModel = .notDownloaded

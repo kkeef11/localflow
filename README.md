@@ -20,9 +20,9 @@ The only network use is the one-time model downloads.
 | | |
 |---|---|
 | macOS | 14 Sonoma or later |
-| Mac | Apple Silicon recommended. Intel builds but hasn't been tested, and Whisper large-v3 is very slow there. |
-| Memory | 16 GB recommended (Whisper ≈ 3 GB + qwen2.5:7b ≈ 5 GB). 8 GB Macs will be slow. |
-| Disk | ~3 GB for the speech model, plus ~4.7 GB for the cleanup model |
+| Mac | Apple Silicon recommended. Intel builds but hasn't been tested, and Whisper is very slow there. |
+| Memory | 8 GB works (LocalFlow picks compact models); 16 GB or more gets the full-size models. See [Models](#models). |
+| Disk | ~2.5 GB for the models on an 8 GB Mac, ~7.7 GB on 16 GB or more |
 | Other software | [Ollama](https://ollama.com/download) (free). The Setup window links to it. |
 | Network | Only for the first-run model downloads |
 
@@ -61,7 +61,7 @@ Each row has one button for its next step, and rows turn green as you finish the
 | **Microphone** | To hear you | Click **Allow** in the system prompt |
 | **Accessibility** | To paste at the cursor and read selected text | **Open Settings** → turn on LocalFlow |
 | **Input Monitoring** | To detect the Right Option / Right Shift hotkeys | **Open Settings** → turn on LocalFlow, then click **Relaunch** if macOS asks |
-| **Speech model** | Whisper large-v3 speech recognition | Click **Download (~3 GB)** — one time; progress shows in the window and status line |
+| **Speech model** | On-device speech recognition | Click **Download** (size shown on the button) — one time; progress shows in the window and status line |
 | **Ollama** | Cleanup and voice commands | **Get Ollama** → install the app → **Start Ollama** → **Download** the model (several GB) |
 
 What happens if a step is skipped:
@@ -76,6 +76,50 @@ What happens if a step is skipped:
 - **Nothing downloads without a click.** The first time the speech model loads, it is also
   optimized for your Mac, which can take several minutes. Later launches are quick and
   fully offline.
+
+## Models
+
+LocalFlow needs two models in memory at once while you dictate, so it picks them by how much
+memory your Mac has:
+
+| | Mac with less than 12 GB (e.g. 8 GB) | Mac with 12 GB or more |
+|---|---|---|
+| Speech (Whisper) | `large-v3-v20240930_626MB`: large-v3 turbo, compressed. ~0.6 GB | `large-v3`. ~3 GB |
+| Cleanup (Ollama) | `qwen2.5:3b`. ~1.9 GB | `qwen2.5:7b`. ~4.7 GB |
+| Total in memory | ~2.6 GB | ~8 GB |
+
+On an 8 GB M3, the full-size pair pushed the Mac into heavy swap: dictations took over a
+minute and everything lagged. The compact pair takes a few seconds.
+
+**Whisper large-v3 vs. large-v3 turbo (compressed)**
+- large-v3 is the most accurate, especially for uncommon words, names, accents and noisy
+  audio. But it's ~3 GB and slower, because it uses 32 decoder layers to produce each word.
+- Turbo cuts the decoder to 4 layers, which makes it much faster, and the compressed
+  version shrinks it to ~0.6 GB. Accuracy is close to large-v3 for everyday English
+  dictation, but a little lower on rare words and difficult audio. Your custom vocabulary
+  helps with names.
+
+**qwen2.5:7b vs. qwen2.5:3b**
+- 7b follows the cleanup rules more reliably: dropping "scratch that", formatting bullets,
+  not answering questions you dictate. It's also better at rewrites and voice commands.
+  The cost is ~4.7 GB of memory and slower responses.
+- 3b handles punctuation, capitalization and filler-word removal well, at ~1.9 GB and
+  roughly twice the speed. It's more likely to occasionally rephrase something or slip on
+  a complex rewrite.
+
+**Choosing a model yourself.** Quit LocalFlow, then set either model in
+`~/Library/Application Support/LocalFlow/settings.json`:
+
+```json
+{"sttModel": "large-v3", "llmModel": "qwen2.5:7b"}
+```
+
+Reopen LocalFlow and click **Download** for anything new in Setup. A value in this file
+always overrides the memory-based default. To return to the defaults, remove the key. Any
+[WhisperKit model name](https://huggingface.co/argmaxinc/whisperkit-coreml/tree/main) without the
+`openai_whisper-` prefix works (e.g. `small.en`), as does any Ollama model, though
+LocalFlow is only tested with the ones above. Models you stop using stay on disk until you
+delete them (see [Uninstalling](#uninstalling)).
 
 ## Installation — build from source
 
@@ -160,13 +204,14 @@ LocalFlow entries with **–** in each Privacy & Security list.
 ## Uninstalling
 
 1. Quit LocalFlow and delete `/Applications/LocalFlow.app`.
-2. Optional — delete settings and the downloaded speech model (~3 GB):
+2. Optional — delete settings and the downloaded speech models (0.6–3 GB each):
    ```bash
    rm -rf ~/Library/Application\ Support/LocalFlow
    ```
 3. Optional — remove LocalFlow's permission entries:
    `tccutil reset All com.kkeefer.LocalFlow`
-4. Optional — remove the cleanup model with `ollama rm qwen2.5:7b`. To remove Ollama
+4. Optional — remove the cleanup model with `ollama rm qwen2.5:3b` (or `qwen2.5:7b`; `ollama list`
+   shows which you have). To remove Ollama
    itself, follow Ollama's own instructions.
 
 Source builds from before the setup window existed stored the speech model in
@@ -190,11 +235,11 @@ Nothing is deleted automatically — not on upgrade, and not on uninstall.
   are pasted as the raw transcript.
 - **"Cleanup skipped (…)" under the status.** Ollama returned an error, often because the
   model is still loading or the Mac is short on memory. The raw transcript was pasted.
-  Check it with `ollama run qwen2.5:7b "hi"`.
+  Check it with `ollama run qwen2.5:3b "hi"` (use your model's name from `ollama list`).
 - **Speech model download failed or was interrupted.** Click **Retry** in Setup. Downloads
   resume from where they stopped, and an already-downloaded model is reloaded from disk
   (no network needed). If loading keeps failing, the files may be damaged: click
-  **Re-download** to delete and fetch them again (~3 GB).
+  **Re-download** to delete and fetch them again.
 - **"Preparing speech model…" takes a long time on first launch.** macOS is compiling the
   model for your Mac's Neural Engine. This happens once.
 - **Build fails with "Entitlements file was modified during the build".** Run
@@ -212,11 +257,6 @@ Nothing is deleted automatically — not on upgrade, and not on uninstall.
   key and tap the hotkey once.
 - **Pasting borrows the clipboard.** Text is pasted with a synthetic Cmd+V. Plain-text
   clipboard contents are restored afterwards, but non-text items (such as images) are lost.
-- **The default speech model is large and accurate.** Whisper large-v3 is the most
-  accurate choice and is fast on Apple Silicon, but it needs ~3 GB of disk and memory. To
-  trade accuracy for speed and size, set `"sttModel"` in
-  `~/Library/Application Support/LocalFlow/settings.json` to another WhisperKit variant
-  (for example `"small.en"`; not tested by the maintainers), then relaunch.
 - **Revoking Input Monitoring while LocalFlow runs isn't detected.** The Setup row stays
   green until the next launch.
 - **No auto-update.** Download new versions from Releases (see [Upgrading](#upgrading)).
