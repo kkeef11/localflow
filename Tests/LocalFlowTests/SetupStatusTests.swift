@@ -37,14 +37,19 @@ final class SetupStatusTests: XCTestCase {
         XCTAssertTrue(setup.requiredItemsMissing)
     }
 
-    func test_ollama_is_optional_but_reported() {
+    func test_ollama_is_required_setup() {
         var setup = SetupStatus()
         setup.ollamaModel = "qwen2.5:7b"
-        setup.ollama = .modelMissing
-        XCTAssertFalse(setup.requiredItemsMissing, "dictation works without Ollama")
-        XCTAssertEqual(setup.summary, "Ollama model qwen2.5:7b missing (cleanup off)")
+        for missing in [OllamaStatus.notInstalled, .notRunning, .modelMissing] {
+            setup.ollama = missing
+            XCTAssertTrue(setup.requiredItemsMissing, "\(missing) must keep setup open")
+        }
+        XCTAssertEqual(setup.summary, "Ollama model qwen2.5:7b missing")
         setup.ollama = .notInstalled
-        XCTAssertEqual(setup.summary, "Ollama not installed (cleanup off)")
+        XCTAssertEqual(setup.summary, "Ollama not installed")
+        setup.ollama = .ready
+        XCTAssertFalse(setup.requiredItemsMissing)
+        XCTAssertNil(setup.summary)
     }
 
     @MainActor
@@ -56,7 +61,7 @@ final class SetupStatusTests: XCTestCase {
         XCTAssertEqual(state.status, "Listening…")
         state.status = "Idle"
         state.applySetupStatus()
-        XCTAssertEqual(state.status, "Ollama not running (cleanup off)")
+        XCTAssertEqual(state.status, "Ollama not running")
         state.setup.ollama = .ready
         state.applySetupStatus()
         XCTAssertEqual(state.status, "Idle", "a resolved warning clears itself")

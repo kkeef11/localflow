@@ -34,7 +34,7 @@ struct SetupView: View {
                 }
             }
             row(done: setup.accessibility, title: "Accessibility",
-                why: "To paste text at your cursor and read selected text for rewrites.") {
+                why: "To paste text at your cursor and read selected text for rewrites. If LocalFlow is already on in Settings, select it, click –, then click Open Settings again.") {
                 Button("Open Settings") { actions.request(.accessibility) }
             }
             row(done: setup.hotkeysActive, title: "Input Monitoring",
@@ -88,17 +88,17 @@ struct SetupView: View {
 
     @ViewBuilder
     private func ollamaRow(_ setup: SetupStatus) -> some View {
-        let title = "Ollama (optional)"
+        let title = "Ollama"
         switch setup.ollama {
         case .ready, .unknown:
             row(done: true, title: title, why: "Cleans up punctuation and filler words with \(setup.ollamaModel).") { EmptyView() }
         case .notInstalled:
             row(done: false, title: title,
-                why: "Cleans up punctuation and filler words. Without it, LocalFlow pastes the raw transcript.") {
+                why: "Cleans up punctuation and filler words, and runs voice commands. Install the free Ollama app, then come back here.") {
                 Button("Get Ollama") { actions.openOllamaDownloadPage() }
             }
         case .notRunning:
-            row(done: false, title: title, why: "Installed but not running, so cleanup is off.") {
+            row(done: false, title: title, why: "Installed but not running. LocalFlow needs it running in the background.") {
                 Button("Start Ollama") { actions.startOllama() }
             }
         case .modelMissing:

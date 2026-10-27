@@ -56,7 +56,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, Obse
         let controller = DictationController(recorder: recorder, transcriber: transcriber, cleanup: cleanup,
                                              injector: injector, state: state,
                                              contextProvider: contextProvider, router: router, llm: llm,
-                                             indicator: indicator)
+                                             indicator: indicator,
+                                             onSetupNeeded: { [weak self] in self?.showSetup() })
         self.controller = controller
         self.transcriber = transcriber
         self.llm = llm
