@@ -56,7 +56,7 @@ enum SpeechModelState: Equatable {
 struct SetupStatus: Equatable {
     var microphone: PermissionState = .granted
     var accessibility = true
-    /// Whether the global hotkey event tap exists — the real test of Input Monitoring.
+    /// Whether the hotkeys can work: the event tap exists AND Input Monitoring is granted.
     var hotkeysActive = true
     var speechModel: SpeechModelState = .unknown
     var ollama: OllamaStatus = .unknown

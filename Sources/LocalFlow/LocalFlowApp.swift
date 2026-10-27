@@ -99,9 +99,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, Obse
     private func refreshHealthNow() async {
         state.setup.microphone = HealthCheck.microphonePermission()
         state.setup.accessibility = HealthCheck.accessibilityGranted()
-        // Tap creation is the real Input Monitoring test; retrying picks up a fresh grant
-        // when macOS allows it without a relaunch.
-        state.setup.hotkeysActive = hotkeys.start()
+        // Tap creation alone proves nothing (it succeeds without Input Monitoring and then
+        // receives no keys), so ask macOS about the permission too. When it flips to granted,
+        // recreate the tap: one made before the grant can stay deaf.
+        let listenGranted = HealthCheck.inputMonitoringGranted()
+        if listenGranted && !state.setup.hotkeysActive {
+            hotkeys.restart()
+        }
+        state.setup.hotkeysActive = hotkeys.start() && listenGranted
         healthGeneration += 1
         let generation = healthGeneration
         let ollama = await HealthCheck.ollamaStatus(model: settings.settings.llmModel)

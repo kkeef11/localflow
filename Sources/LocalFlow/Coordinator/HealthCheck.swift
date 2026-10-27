@@ -53,6 +53,12 @@ enum HealthCheck {
         AXIsProcessTrusted()
     }
 
+    /// Whether macOS will actually deliver keyboard events to our listen-only tap. Creating
+    /// the tap succeeds either way, so this — not tap creation — is the real check.
+    static func inputMonitoringGranted() -> Bool {
+        CGPreflightListenEventAccess()
+    }
+
     static func microphonePermission() -> PermissionState {
         switch AVCaptureDevice.authorizationStatus(for: .audio) {
         case .authorized: return .granted

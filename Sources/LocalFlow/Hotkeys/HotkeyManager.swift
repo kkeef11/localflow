@@ -21,10 +21,12 @@ final class HotkeyManager {
     var onDictation: (Bool) -> Void = { _ in }
     var onCommand: (Bool) -> Void = { _ in }
     private var tap: CFMachPort?
+    private var source: CFRunLoopSource?
 
-    /// Creates the event tap if it doesn't exist yet. Returns whether hotkeys are live.
-    /// Safe to call repeatedly: the health check retries it after the user grants Input
-    /// Monitoring, since tap creation fails (returns nil) until then.
+    /// Creates the event tap if it doesn't exist yet. Returns whether a tap exists — which is
+    /// NOT proof that keys arrive: macOS 26 creates a listen-only tap without Input
+    /// Monitoring and then silently delivers nothing. Pair with
+    /// `HealthCheck.inputMonitoringGranted()`.
     @discardableResult
     func start() -> Bool {
         if tap != nil { return true }
@@ -57,8 +59,24 @@ final class HotkeyManager {
         }
         let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
         CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
+        self.source = source
         CGEvent.tapEnable(tap: tap, enable: true)
         Self.log.debug("event tap created and enabled")
         return true
+    }
+
+    /// Tears the tap down and creates a fresh one. A tap created before Input Monitoring was
+    /// granted can stay deaf after the grant, so the health check recreates it then.
+    @discardableResult
+    func restart() -> Bool {
+        if let tap {
+            CGEvent.tapEnable(tap: tap, enable: false)
+            if let source { CFRunLoopRemoveSource(CFRunLoopGetMain(), source, .commonModes) }
+            CFMachPortInvalidate(tap)
+        }
+        tap = nil
+        source = nil
+        Self.log.debug("event tap torn down for restart")
+        return start()
     }
 }
