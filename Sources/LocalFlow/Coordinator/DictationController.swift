@@ -27,6 +27,9 @@ final class DictationController {
     /// buffers rather than an error, and Whisper "transcribes" silence into phrases like
     /// "Thank you." — which would then be pasted. Injectable for tests.
     private let micAuthorized: @Sendable () -> Bool
+    /// Called when a hotkey press can't proceed because setup is incomplete. The status line
+    /// alone is invisible until the menu is opened, so the app brings up the Setup window.
+    private let onSetupNeeded: () -> Void
     private var recording = false
     private var capturedTone = "neutral"
     private enum Mode { case dictation, command }
@@ -37,7 +40,8 @@ final class DictationController {
          contextProvider: ContextProvider, router: CommandRouter, llm: LLMGenerating,
          indicator: RecordingIndicating = NoopIndicator(),
          axTrusted: @escaping @Sendable () -> Bool = { HealthCheck.accessibilityGranted() },
-         micAuthorized: @escaping @Sendable () -> Bool = { HealthCheck.microphonePermission() == .granted }) {
+         micAuthorized: @escaping @Sendable () -> Bool = { HealthCheck.microphonePermission() == .granted },
+         onSetupNeeded: @escaping () -> Void = {}) {
         self.recorder = recorder
         self.transcriber = transcriber
         self.cleanup = cleanup
@@ -49,6 +53,7 @@ final class DictationController {
         self.indicator = indicator
         self.axTrusted = axTrusted
         self.micAuthorized = micAuthorized
+        self.onSetupNeeded = onSetupNeeded
     }
 
     func dictationHotkey(pressed: Bool) {
@@ -71,17 +76,20 @@ final class DictationController {
         guard !recording else { return }
         guard micAuthorized() else {
             state.status = "Grant Microphone access"
+            onSetupNeeded()
             return
         }
         switch state.setup.speechModel {
         case .notDownloaded, .failed:
             // Recording now would only end in an error after the user finished speaking.
             state.status = "Speech model not ready — open Setup"
+            onSetupNeeded()
             return
         case .downloading, .loading:
             // Transcription would wait for the whole download/compile, then paste into
             // whatever app happens to be frontmost minutes later.
             state.status = "Speech model still preparing — try again shortly"
+            onSetupNeeded()
             return
         case .unknown, .ready:
             break
@@ -135,6 +143,7 @@ final class DictationController {
                     // Keep the transcript in history so it can be copied manually.
                     state.record(text)
                     state.status = "Grant Accessibility (paste blocked)"
+                    onSetupNeeded()
                     return
                 }
                 injector.inject(text)

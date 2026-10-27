@@ -86,7 +86,8 @@ final class DictationControllerTests: XCTestCase {
         indicator: RecordingIndicating = NoopIndicator(),
         recorder: FakeRecorder = FakeRecorder(),
         axTrusted: @escaping @Sendable () -> Bool = { true },
-        micAuthorized: @escaping @Sendable () -> Bool = { true }
+        micAuthorized: @escaping @Sendable () -> Bool = { true },
+        onSetupNeeded: @escaping () -> Void = {}
     ) -> DictationController {
         DictationController(
             recorder: recorder,
@@ -99,7 +100,8 @@ final class DictationControllerTests: XCTestCase {
             llm: FakeLLM(),
             indicator: indicator,
             axTrusted: axTrusted,
-            micAuthorized: micAuthorized
+            micAuthorized: micAuthorized,
+            onSetupNeeded: onSetupNeeded
         )
     }
 
@@ -131,6 +133,24 @@ final class DictationControllerTests: XCTestCase {
         XCTAssertEqual(state.status, "Grant Microphone access")
         XCTAssertTrue(spy.events.isEmpty)
         XCTAssertNil(injector.injectedText)
+    }
+
+    func test_blocked_hotkey_brings_up_setup() async throws {
+        var shown = 0
+        let state = AppState()
+        let controller = makeController(transcript: "raw", cleanup: nil, state: state,
+                                        injector: FakeInjector(), micAuthorized: { false },
+                                        onSetupNeeded: { shown += 1 })
+        controller.dictationHotkey(pressed: true)
+        controller.dictationHotkey(pressed: false)
+        XCTAssertEqual(shown, 1, "a blocked press must give visible feedback, not just a status string")
+
+        shown = 0
+        let ready = makeController(transcript: "raw", cleanup: nil, state: AppState(),
+                                   injector: FakeInjector(), onSetupNeeded: { shown += 1 })
+        ready.dictationHotkey(pressed: true)
+        ready.dictationHotkey(pressed: false)
+        XCTAssertEqual(shown, 0, "a normal dictation must not pop up Setup")
     }
 
     func test_missing_speech_model_blocks_recording() async throws {

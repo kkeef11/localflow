@@ -34,7 +34,7 @@ struct SetupView: View {
                 }
             }
             row(done: setup.accessibility, title: "Accessibility",
-                why: "To paste text at your cursor and read selected text for rewrites.") {
+                why: "To paste text at your cursor and read selected text for rewrites. If LocalFlow is already on in Settings, select it, click –, then click Open Settings again.") {
                 Button("Open Settings") { actions.request(.accessibility) }
             }
             row(done: setup.hotkeysActive, title: "Input Monitoring",
